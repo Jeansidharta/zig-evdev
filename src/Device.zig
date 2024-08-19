@@ -61,57 +61,88 @@ pub fn isKeyboard(self: Device) bool {
     return self.hasEventCode(c.EV_KEY, c.KEY_SPACE) and self.hasEventCode(c.EV_KEY, c.KEY_A) and self.hasEventCode(c.EV_KEY, c.KEY_Z);
 }
 
-pub fn readEvents(self: Device) !?ArrayList(c.input_event) {
+pub fn readEvents(self: Device) !?[]const c.input_event {
     var events = ArrayList(c.input_event).init(self.allocator);
     defer events.deinit();
-    {
-        var ev: c.input_event = undefined;
-        // read events until SYN_REPORT event is received
+
+    var ev: c.input_event = undefined;
+    // read events until SYN_REPORT event is received
+    while (true) {
+        ev = try self.nextEvent(ReadFlags.NORMAL) orelse return null;
+        try events.append(ev);
+        if (ev.type != c.EV_SYN) continue;
+        if (ev.code == c.SYN_REPORT) break;
+        if (ev.code != c.SYN_DROPPED) continue;
+        // read all events currently available on the device when SYN_DROPPED event is received
         while (true) {
-            ev = try self.nextEvent(ReadFlags.NORMAL) orelse return null;
-            try events.append(ev);
-            if (ev.type != c.EV_SYN) continue;
-            if (ev.code == c.SYN_REPORT) break;
-            if (ev.code != c.SYN_DROPPED) continue;
-            // read all events currently available on the device when SYN_DROPPED event is received
-            while (true) {
-                log.info("handling dropped events...", .{});
-                if (try self.nextEvent(ReadFlags.SYNC)) |ev2| {
-                    try events.append(ev2);
-                } else break;
-            }
+            log.info("handling dropped events...", .{});
+            if (try self.nextEvent(ReadFlags.SYNC)) |ev2| {
+                try events.append(ev2);
+            } else break;
         }
     }
 
-    var result = ArrayList(c.input_event).init(self.allocator);
-    errdefer result.deinit();
+    return try removeInvalidEvents(self.allocator, events.items);
+}
+
+fn removeInvalidEvents(allocator: Allocator, events: []const c.input_event) Allocator.Error![]const c.input_event {
+    var result = ArrayList(c.input_event).init(allocator);
+    defer result.deinit();
 
     var dropped = false;
     var start_idx: usize = 0;
 
-    for (events.items, 0..) |ev, idx| {
-        if (ev.type != c.EV_SYN) {
-            continue;
-        }
+    for (events, 0..) |ev, idx| {
+        if (ev.type != c.EV_SYN) continue;
 
         switch (ev.code) {
+            c.SYN_DROPPED => dropped = true,
             c.SYN_REPORT => if (dropped) {
                 dropped = false;
+                start_idx = idx + 1;
             } else {
-                try result.appendSlice(events.items[start_idx .. idx + 1]);
-            },
-            c.SYN_DROPPED => {
-                dropped = true;
+                try result.appendSlice(events[start_idx .. idx + 1]);
+                start_idx = idx;
             },
             c.SYN_CONFIG => unreachable, // currently not used
             c.SYN_MT_REPORT => unreachable, // used for MT protocol type A
             else => unreachable,
         }
-
-        start_idx = idx;
     }
 
-    return result;
+    return try result.toOwnedSlice();
+}
+
+test "removeInvalidEvents" {
+    const allocator = std.testing.allocator;
+    // zig fmt: off
+    const expected: []const c.input_event = &.{
+        newEvent(c.EV_ABS, c.ABS_X,        9),
+        newEvent(c.EV_ABS, c.ABS_Y,        8),
+        newEvent(c.EV_SYN, c.SYN_REPORT,   0),
+        // ---
+        newEvent(c.EV_ABS, c.ABS_X,       11),
+        newEvent(c.EV_KEY, c.BTN_TOUCH,    0),
+        newEvent(c.EV_SYN, c.SYN_REPORT,   0),
+    };
+    const actual = try removeInvalidEvents(allocator, &.{
+        newEvent(c.EV_ABS, c.ABS_X,        9),
+        newEvent(c.EV_ABS, c.ABS_Y,        8),
+        newEvent(c.EV_SYN, c.SYN_REPORT,   0),
+        // ---
+        newEvent(c.EV_ABS, c.ABS_X,       10),
+        newEvent(c.EV_ABS, c.ABS_Y,       10),
+        newEvent(c.EV_SYN, c.SYN_DROPPED,  0),
+        newEvent(c.EV_ABS, c.ABS_Y,       15),
+        newEvent(c.EV_SYN, c.SYN_REPORT,   0),
+        // ---
+        newEvent(c.EV_ABS, c.ABS_X,       11),
+        newEvent(c.EV_KEY, c.BTN_TOUCH,    0),
+        newEvent(c.EV_SYN, c.SYN_REPORT,   0),
+    });
+    // zig fmt: on
+    defer allocator.free(actual);
+    try std.testing.expectEqualDeep(expected, actual);
 }
 
 const ReadFlags = struct {
@@ -237,3 +268,12 @@ pub const VirtualDevice = struct {
         return c.libevdev_uinput_get_syspath(self.uidev);
     }
 };
+
+fn newEvent(typ: c_ushort, code: c_ushort, value: c_int) c.input_event {
+    return c.input_event{
+        .time = .{ .tv_sec = 0, .tv_usec = 0 },
+        .type = typ,
+        .code = code,
+        .value = value,
+    };
+}
