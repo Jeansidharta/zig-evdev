@@ -1,0 +1,20 @@
+.{
+    .name = "zig-evdev",
+    .version = "0.0.0",
+
+    .paths = .{
+        "build.zig",
+        "build.zig.zon",
+        "src",
+        "LICENSE",
+        "README.md",
+    },
+
+    .dependencies = .{
+        .libevdev = .{
+            .url = "https://gitlab.freedesktop.org/libevdev/libevdev/-/archive/libevdev-1.13.2/libevdev-libevdev-1.13.2.tar.gz",
+            .hash = "122067b14d052de94acc04ab8321dcc4642231230a70f64273fea0e583ec92884c06",
+            .lazy = true,
+        },
+    },
+}
