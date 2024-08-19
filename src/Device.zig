@@ -208,12 +208,82 @@ pub fn ungrab(self: Device) !void {
     }
 }
 
+pub fn copyCapabilities(self: Device, src: Device) !void {
+    inline for (0..@typeInfo(Property).Enum.fields.len) |prop_u| {
+        const prop: Property = @enumFromInt(prop_u);
+        if (src.hasProperty(prop)) {
+            try self.enableProperty(prop);
+        }
+    }
+    inline for ([_][2]c_int{
+        .{ c.EV_KEY, c.KEY_CNT },
+        .{ c.EV_REL, c.REL_CNT },
+        .{ c.EV_ABS, c.ABS_CNT },
+        .{ c.EV_MSC, c.MSC_CNT },
+        .{ c.EV_SW, c.SW_CNT },
+        .{ c.EV_LED, c.LED_CNT },
+        .{ c.EV_SND, c.SND_CNT },
+        .{ c.EV_SND, c.SND_CNT },
+        .{ c.EV_REP, c.REP_CNT },
+        .{ c.EV_FF, c.FF_CNT },
+    }) |ev| {
+        try self.copyEventCapabilities(src, ev[0], ev[1]);
+    }
+}
+
+fn copyEventCapabilities(
+    self: Device,
+    src: Device,
+    comptime typ: c_uint,
+    comptime code_count: c_uint,
+) !void {
+    if (!src.hasEventType(typ)) return;
+    try self.enableEventType(typ);
+
+    inline for (0..code_count) |code_u| {
+        const code: c_uint = @intCast(code_u);
+        if (src.hasEventCode(typ, code)) {
+            const data = switch (typ) {
+                c.EV_ABS => self.getABSInfo(code),
+                else => null,
+            };
+            try self.enableEventCode(typ, code, data);
+        }
+    }
+}
+
+pub const Property = enum(c_uint) {
+    pointer = c.INPUT_PROP_POINTER,
+    direct = c.INPUT_PROP_DIRECT,
+    buttonpad = c.INPUT_PROP_BUTTONPAD,
+    semi_mt = c.INPUT_PROP_SEMI_MT,
+    topbuttonpad = c.INPUT_PROP_TOPBUTTONPAD,
+    pointing_stick = c.INPUT_PROP_POINTING_STICK,
+    accelerometer = c.INPUT_PROP_ACCELEROMETER,
+};
+
+pub fn hasProperty(self: Device, prop: Property) bool {
+    return c.libevdev_has_property(self.dev, @intFromEnum(prop)) == 1;
+}
+
 pub fn hasEventType(self: Device, typ: c_uint) bool {
     return c.libevdev_has_event_type(self.dev, typ) == 1;
 }
 
 pub fn hasEventCode(self: Device, typ: c_uint, code: c_uint) bool {
     return c.libevdev_has_event_code(self.dev, typ, code) == 1;
+}
+
+pub fn enableProperty(self: Device, prop: Property) !void {
+    const rc = c.libevdev_enable_property(self.dev, @intFromEnum(prop));
+    if (rc < 0) {
+        log.warn("failed to enable property {}: {s} (device: {s})", .{
+            prop,
+            c.strerror(-rc),
+            self.getName(),
+        });
+        return error.EnablePropertyFailed;
+    }
 }
 
 pub fn enableEventType(self: Device, typ: c_uint) !void {
