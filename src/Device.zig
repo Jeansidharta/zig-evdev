@@ -9,7 +9,6 @@ const Device = @This();
 
 dev: ?*c.libevdev,
 allocator: Allocator,
-event_buf: ArrayList(c.input_event),
 
 pub fn new(allocator: Allocator, name: [*c]const u8) !Device {
     const dev: ?*c.libevdev = c.libevdev_new();
@@ -17,7 +16,6 @@ pub fn new(allocator: Allocator, name: [*c]const u8) !Device {
     return Device{
         .dev = dev,
         .allocator = allocator,
-        .event_buf = ArrayList(c.input_event).init(allocator),
     };
 }
 
@@ -31,13 +29,11 @@ pub fn fromFd(allocator: Allocator, fd: i32) !Device {
     return Device{
         .dev = dev,
         .allocator = allocator,
-        .event_buf = ArrayList(c.input_event).init(allocator),
     };
 }
 
 pub fn free(self: Device) void {
     c.libevdev_free(self.dev);
-    self.event_buf.deinit();
 }
 
 // https://source.android.com/docs/core/interaction/input/touch-devices#touch-device-classification
@@ -65,19 +61,24 @@ pub fn isKeyboard(self: Device) bool {
     return self.hasEventCode(c.EV_KEY, c.KEY_SPACE) and self.hasEventCode(c.EV_KEY, c.KEY_A) and self.hasEventCode(c.EV_KEY, c.KEY_Z);
 }
 
-pub fn readEvents(self: *Device) !?ArrayList(c.input_event) {
+pub fn readEvents(self: Device) !?ArrayList(c.input_event) {
+    var events = ArrayList(c.input_event).init(self.allocator);
+    defer events.deinit();
     {
         var ev: c.input_event = undefined;
         // read events until SYN_REPORT event is received
         while (true) {
             ev = try self.nextEvent(ReadFlags.NORMAL) orelse return null;
+            try events.append(ev);
             if (ev.type != c.EV_SYN) continue;
             if (ev.code == c.SYN_REPORT) break;
             if (ev.code != c.SYN_DROPPED) continue;
             // read all events currently available on the device when SYN_DROPPED event is received
             while (true) {
                 log.info("handling dropped events...", .{});
-                if (try self.nextEvent(ReadFlags.SYNC) == null) break;
+                if (try self.nextEvent(ReadFlags.SYNC)) |ev2| {
+                    try events.append(ev2);
+                } else break;
             }
         }
     }
@@ -88,9 +89,7 @@ pub fn readEvents(self: *Device) !?ArrayList(c.input_event) {
     var dropped = false;
     var start_idx: usize = 0;
 
-    const event_buf = try self.event_buf.clone();
-    defer event_buf.deinit();
-    for (event_buf.items, 0..) |ev, idx| {
+    for (events.items, 0..) |ev, idx| {
         if (ev.type != c.EV_SYN) {
             continue;
         }
@@ -99,7 +98,7 @@ pub fn readEvents(self: *Device) !?ArrayList(c.input_event) {
             c.SYN_REPORT => if (dropped) {
                 dropped = false;
             } else {
-                try result.appendSlice(self.event_buf.items[start_idx .. idx + 1]);
+                try result.appendSlice(events.items[start_idx .. idx + 1]);
             },
             c.SYN_DROPPED => {
                 dropped = true;
@@ -112,8 +111,6 @@ pub fn readEvents(self: *Device) !?ArrayList(c.input_event) {
         start_idx = idx;
     }
 
-    try self.event_buf.replaceRange(0, start_idx, &[_]c.input_event{});
-
     return result;
 }
 
@@ -124,12 +121,11 @@ const ReadFlags = struct {
     const FORCE_SYNC = c.LIBEVDEV_READ_FLAG_FORCE_SYNC;
 };
 
-fn nextEvent(self: *Device, flags: c_uint) !?c.input_event {
+fn nextEvent(self: Device, flags: c_uint) !?c.input_event {
     var ev: c.input_event = undefined;
     const rc = c.libevdev_next_event(self.dev, flags, &ev);
     switch (rc) {
         c.LIBEVDEV_READ_STATUS_SUCCESS, c.LIBEVDEV_READ_STATUS_SYNC => {
-            try self.event_buf.append(ev);
             log.debug("event received: {s} {s}: {} (device: {s})", .{
                 c.libevdev_event_type_get_name(ev.type),
                 c.libevdev_event_code_get_name(ev.type, ev.code),
