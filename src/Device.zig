@@ -10,7 +10,7 @@ const Device = @This();
 dev: ?*c.libevdev,
 allocator: Allocator,
 
-pub fn new(allocator: Allocator, name: [*c]const u8) !Device {
+pub fn new(allocator: Allocator, name: [*c]const u8) Device {
     const dev: ?*c.libevdev = c.libevdev_new();
     c.libevdev_set_name(dev, name);
     return Device{
