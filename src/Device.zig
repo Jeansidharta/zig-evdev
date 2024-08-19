@@ -40,16 +40,21 @@ pub fn free(self: Device) void {
 // https://source.android.com/docs/core/interaction/input/touch-devices#touch-device-driver-requirements
 // https://source.android.com/docs/core/interaction/input/input-device-configuration-files#rationale
 
-pub fn isMTDevice(self: Device) bool {
+pub fn isMultiTouch(self: Device) bool {
     return self.hasEventCode(c.EV_KEY, c.BTN_TOUCH) //
     and self.hasEventCode(c.EV_ABS, c.ABS_MT_POSITION_X) and self.hasEventCode(c.EV_ABS, c.ABS_MT_POSITION_Y) //
-    and self.hasEventCode(c.EV_ABS, c.ABS_MT_SLOT); // support MT protocol type B
+    and 1 < self.getNumSlots() // support MT protocol type B
+    and !self.isGamepad();
 }
 
-pub fn isSTDevice(self: Device) bool {
+pub fn isSingleTouch(self: Device) bool {
     return self.hasEventCode(c.EV_KEY, c.BTN_TOUCH) //
     and self.hasEventCode(c.EV_ABS, c.ABS_X) and self.hasEventCode(c.EV_ABS, c.ABS_Y) //
-    and !self.isMTDevice();
+    and !self.isMultiTouch();
+}
+
+pub fn isGamepad(self: Device) bool {
+    return self.hasEventCode(c.EV_KEY, c.BTN_GAMEPAD);
 }
 
 pub fn isMouse(self: Device) bool {
@@ -237,6 +242,10 @@ pub fn enableEventCode(self: Device, typ: c_uint, code: c_uint, data: ?*const an
 
 fn getABSInfo(self: Device, axis: c_uint) [*c]const c.input_absinfo {
     return c.libevdev_get_abs_info(self.dev, axis);
+}
+
+fn getNumSlots(self: Device) c_int {
+    return c.libevdev_get_num_slots(self.dev);
 }
 
 pub fn createVirtualDevice(self: *const Device) !VirtualDevice {
