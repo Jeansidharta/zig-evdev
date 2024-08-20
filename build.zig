@@ -30,4 +30,14 @@ fn setupModule(m: *Build.Module, b: *Build) void {
         m.addIncludePath(dep.path("."));
     }
     m.linkSystemLibrary("libevdev", .{ .needed = true });
+
+    const gen_event = b.addExecutable(.{
+        .name = "gen_event",
+        .root_source_file = b.path("tools/gen_event.zig"),
+        .target = b.graph.host,
+        .link_libc = true,
+    });
+    m.addAnonymousImport("Event", .{
+        .root_source_file = b.addRunArtifact(gen_event).addOutputFileArg("Event.zig"),
+    });
 }

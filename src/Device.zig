@@ -5,6 +5,8 @@ const log = std.log.scoped(.evdev);
 const Allocator = std.mem.Allocator;
 const ArrayList = std.ArrayList;
 
+const Event = @import("Event");
+
 const Device = @This();
 
 dev: ?*c.libevdev,
@@ -41,43 +43,60 @@ pub fn free(self: Device) void {
 // https://source.android.com/docs/core/interaction/input/input-device-configuration-files#rationale
 
 pub fn isMultiTouch(self: Device) bool {
-    return self.hasEventCode(c.EV_KEY, c.BTN_TOUCH) //
-    and self.hasEventCode(c.EV_ABS, c.ABS_MT_POSITION_X) and self.hasEventCode(c.EV_ABS, c.ABS_MT_POSITION_Y) //
-    and 1 < self.getNumSlots() // support MT protocol type B
-    and !self.isGamepad();
+    inline for ([_]Event.Code{
+        .{ .KEY = .BTN_TOUCH },
+        .{ .ABS = .ABS_MT_POSITION_X },
+        .{ .ABS = .ABS_MT_POSITION_Y },
+    }) |code| if (!self.hasEventCode(code)) return false;
+    return 1 < self.getNumSlots() and !self.isGamepad();
 }
 
 pub fn isSingleTouch(self: Device) bool {
-    return self.hasEventCode(c.EV_KEY, c.BTN_TOUCH) //
-    and self.hasEventCode(c.EV_ABS, c.ABS_X) and self.hasEventCode(c.EV_ABS, c.ABS_Y) //
-    and !self.isMultiTouch();
+    inline for ([_]Event.Code{
+        .{ .KEY = .BTN_TOUCH },
+        .{ .ABS = .ABS_X },
+        .{ .ABS = .ABS_Y },
+    }) |code| if (!self.hasEventCode(code)) return false;
+    return !self.isMultiTouch();
 }
 
 pub fn isGamepad(self: Device) bool {
-    return self.hasEventCode(c.EV_KEY, c.BTN_GAMEPAD);
+    return self.hasEventCode(.{ .KEY = .BTN_GAMEPAD });
 }
 
 pub fn isMouse(self: Device) bool {
-    return self.hasEventCode(c.EV_KEY, c.BTN_MOUSE) //
-    and self.hasEventCode(c.EV_REL, c.REL_X) and self.hasEventCode(c.EV_REL, c.REL_Y);
+    inline for ([_]Event.Code{
+        .{ .KEY = .BTN_MOUSE },
+        .{ .REL = .REL_X },
+        .{ .REL = .REL_Y },
+    }) |code| if (!self.hasEventCode(code)) return false;
+    return true;
 }
 
 pub fn isKeyboard(self: Device) bool {
-    return self.hasEventCode(c.EV_KEY, c.KEY_SPACE) and self.hasEventCode(c.EV_KEY, c.KEY_A) and self.hasEventCode(c.EV_KEY, c.KEY_Z);
+    inline for ([_]Event.Code{
+        .{ .KEY = .KEY_SPACE },
+        .{ .KEY = .KEY_A },
+        .{ .KEY = .KEY_Z },
+    }) |code| if (!self.hasEventCode(code)) return false;
+    return true;
 }
 
-pub fn readEvents(self: Device) !?[]const c.input_event {
-    var events = ArrayList(c.input_event).init(self.allocator);
+pub fn readEvents(self: Device) !?[]const Event {
+    var events = ArrayList(Event).init(self.allocator);
     defer events.deinit();
 
-    var ev: c.input_event = undefined;
+    var ev: Event = undefined;
     // read events until SYN_REPORT event is received
     while (true) {
         ev = try self.nextEvent(ReadFlags.NORMAL) orelse return null;
         try events.append(ev);
-        if (ev.type != c.EV_SYN) continue;
-        if (ev.code == c.SYN_REPORT) break;
-        if (ev.code != c.SYN_DROPPED) continue;
+        const syn = switch (ev.code) {
+            .SYN => |e| e,
+            else => continue,
+        };
+        if (syn == .SYN_REPORT) break;
+        if (syn != .SYN_DROPPED) continue;
         // read all events currently available on the device when SYN_DROPPED event is received
         while (true) {
             log.info("handling dropped events...", .{});
@@ -90,28 +109,29 @@ pub fn readEvents(self: Device) !?[]const c.input_event {
     return try removeInvalidEvents(self.allocator, events.items);
 }
 
-fn removeInvalidEvents(allocator: Allocator, events: []const c.input_event) Allocator.Error![]const c.input_event {
-    var result = ArrayList(c.input_event).init(allocator);
+fn removeInvalidEvents(allocator: Allocator, events: []const Event) Allocator.Error![]const Event {
+    var result = ArrayList(Event).init(allocator);
     defer result.deinit();
 
     var dropped = false;
     var start_idx: usize = 0;
 
     for (events, 0..) |ev, idx| {
-        if (ev.type != c.EV_SYN) continue;
-
-        switch (ev.code) {
-            c.SYN_DROPPED => dropped = true,
-            c.SYN_REPORT => if (dropped) {
+        const syn = switch (ev.code) {
+            .SYN => |e| e,
+            else => continue,
+        };
+        switch (syn) {
+            .SYN_DROPPED => dropped = true,
+            .SYN_REPORT => if (dropped) {
                 dropped = false;
                 start_idx = idx + 1;
             } else {
                 try result.appendSlice(events[start_idx .. idx + 1]);
                 start_idx = idx;
             },
-            c.SYN_CONFIG => unreachable, // currently not used
-            c.SYN_MT_REPORT => unreachable, // used for MT protocol type A
-            else => unreachable,
+            .SYN_CONFIG => unreachable, // currently not used
+            .SYN_MT_REPORT => unreachable, // used for MT protocol type A
         }
     }
 
@@ -121,29 +141,29 @@ fn removeInvalidEvents(allocator: Allocator, events: []const c.input_event) Allo
 test "removeInvalidEvents" {
     const allocator = std.testing.allocator;
     // zig fmt: off
-    const expected: []const c.input_event = &.{
-        newEvent(c.EV_ABS, c.ABS_X,        9),
-        newEvent(c.EV_ABS, c.ABS_Y,        8),
-        newEvent(c.EV_SYN, c.SYN_REPORT,   0),
+    const expected: []const Event = &.{
+        Event.new(.{ .ABS = .ABS_X },        9),
+        Event.new(.{ .ABS = .ABS_Y },        8),
+        Event.new(.{ .SYN = .SYN_REPORT },   0),
         // ---
-        newEvent(c.EV_ABS, c.ABS_X,       11),
-        newEvent(c.EV_KEY, c.BTN_TOUCH,    0),
-        newEvent(c.EV_SYN, c.SYN_REPORT,   0),
+        Event.new(.{ .ABS = .ABS_X },       11),
+        Event.new(.{ .KEY = .BTN_TOUCH },    0),
+        Event.new(.{ .SYN = .SYN_REPORT },   0),
     };
     const actual = try removeInvalidEvents(allocator, &.{
-        newEvent(c.EV_ABS, c.ABS_X,        9),
-        newEvent(c.EV_ABS, c.ABS_Y,        8),
-        newEvent(c.EV_SYN, c.SYN_REPORT,   0),
+        Event.new(.{ .ABS = .ABS_X },        9),
+        Event.new(.{ .ABS = .ABS_Y },        8),
+        Event.new(.{ .SYN = .SYN_REPORT },   0),
         // ---
-        newEvent(c.EV_ABS, c.ABS_X,       10),
-        newEvent(c.EV_ABS, c.ABS_Y,       10),
-        newEvent(c.EV_SYN, c.SYN_DROPPED,  0),
-        newEvent(c.EV_ABS, c.ABS_Y,       15),
-        newEvent(c.EV_SYN, c.SYN_REPORT,   0),
+        Event.new(.{ .ABS = .ABS_X },       10),
+        Event.new(.{ .ABS = .ABS_Y },       10),
+        Event.new(.{ .SYN = .SYN_DROPPED },  0),
+        Event.new(.{ .ABS = .ABS_Y },       15),
+        Event.new(.{ .SYN = .SYN_REPORT },   0),
         // ---
-        newEvent(c.EV_ABS, c.ABS_X,       11),
-        newEvent(c.EV_KEY, c.BTN_TOUCH,    0),
-        newEvent(c.EV_SYN, c.SYN_REPORT,   0),
+        Event.new(.{ .ABS = .ABS_X },       11),
+        Event.new(.{ .KEY = .BTN_TOUCH },    0),
+        Event.new(.{ .SYN = .SYN_REPORT },   0),
     });
     // zig fmt: on
     defer allocator.free(actual);
@@ -157,7 +177,7 @@ const ReadFlags = struct {
     const FORCE_SYNC = c.LIBEVDEV_READ_FLAG_FORCE_SYNC;
 };
 
-fn nextEvent(self: Device, flags: c_uint) !?c.input_event {
+fn nextEvent(self: Device, flags: c_uint) !?Event {
     var ev: c.input_event = undefined;
     const rc = c.libevdev_next_event(self.dev, flags, &ev);
     switch (rc) {
@@ -168,7 +188,11 @@ fn nextEvent(self: Device, flags: c_uint) !?c.input_event {
                 ev.value,
                 self.getName(),
             });
-            return ev;
+            return Event{
+                .code = Event.Code.new(Event.Type.new(ev.type), ev.code),
+                .time = .{ .tv_sec = ev.time.tv_sec, .tv_usec = ev.time.tv_usec },
+                .value = ev.value,
+            };
         },
         -c.EAGAIN => {
             log.debug("no events are currently available (device: {s})", .{self.getName()});
@@ -215,39 +239,31 @@ pub fn copyCapabilities(self: Device, src: Device) !void {
             try self.enableProperty(prop);
         }
     }
-    inline for ([_][2]c_int{
-        .{ c.EV_KEY, c.KEY_CNT },
-        .{ c.EV_REL, c.REL_CNT },
-        .{ c.EV_ABS, c.ABS_CNT },
-        .{ c.EV_MSC, c.MSC_CNT },
-        .{ c.EV_SW, c.SW_CNT },
-        .{ c.EV_LED, c.LED_CNT },
-        .{ c.EV_SND, c.SND_CNT },
-        .{ c.EV_SND, c.SND_CNT },
-        .{ c.EV_REP, c.REP_CNT },
-        .{ c.EV_FF, c.FF_CNT },
-    }) |ev| {
-        try self.copyEventCapabilities(src, ev[0], ev[1]);
+    inline for (@typeInfo(Event.Type).Enum.fields) |field| {
+        try self.copyEventCapabilities(src, @field(Event.Type, field.name));
     }
 }
 
 fn copyEventCapabilities(
     self: Device,
     src: Device,
-    comptime typ: c_uint,
-    comptime code_count: c_uint,
+    comptime typ: Event.Type,
 ) !void {
     if (!src.hasEventType(typ)) return;
     try self.enableEventType(typ);
 
-    inline for (0..code_count) |code_u| {
-        const code: c_uint = @intCast(code_u);
-        if (src.hasEventCode(typ, code)) {
+    @setEvalBranchQuota(2000);
+    const CodeType = typ.CodeType();
+    inline for (@typeInfo(CodeType).Enum.fields) |field| {
+        const codeField = @field(CodeType, field.name); // Event.Code.{KEY,SYN,..}.XXX
+        const code = codeField.intoCode(); // Event.Code
+
+        if (src.hasEventCode(code)) {
             const data = switch (typ) {
-                c.EV_ABS => self.getABSInfo(code),
+                .ABS => src.getABSInfo(codeField),
                 else => null,
             };
-            try self.enableEventCode(typ, code, data);
+            try self.enableEventCode(code, data);
         }
     }
 }
@@ -266,12 +282,12 @@ pub fn hasProperty(self: Device, prop: Property) bool {
     return c.libevdev_has_property(self.dev, @intFromEnum(prop)) == 1;
 }
 
-pub fn hasEventType(self: Device, typ: c_uint) bool {
-    return c.libevdev_has_event_type(self.dev, typ) == 1;
+pub fn hasEventType(self: Device, typ: Event.Type) bool {
+    return c.libevdev_has_event_type(self.dev, typ.intoInt()) == 1;
 }
 
-pub fn hasEventCode(self: Device, typ: c_uint, code: c_uint) bool {
-    return c.libevdev_has_event_code(self.dev, typ, code) == 1;
+pub fn hasEventCode(self: Device, code: Event.Code) bool {
+    return c.libevdev_has_event_code(self.dev, code.getType().intoInt(), code.intoInt()) == 1;
 }
 
 pub fn enableProperty(self: Device, prop: Property) !void {
@@ -286,11 +302,11 @@ pub fn enableProperty(self: Device, prop: Property) !void {
     }
 }
 
-pub fn enableEventType(self: Device, typ: c_uint) !void {
-    const rc = c.libevdev_enable_event_type(self.dev, typ);
+pub fn enableEventType(self: Device, typ: Event.Type) !void {
+    const rc = c.libevdev_enable_event_type(self.dev, typ.intoInt());
     if (rc < 0) {
-        log.warn("failed to enable {s}: {s} (device: {s})", .{
-            c.libevdev_event_type_get_name(typ),
+        log.warn("failed to enable {}: {s} (device: {s})", .{
+            typ,
             c.strerror(-rc),
             self.getName(),
         });
@@ -298,11 +314,11 @@ pub fn enableEventType(self: Device, typ: c_uint) !void {
     }
 }
 
-pub fn enableEventCode(self: Device, typ: c_uint, code: c_uint, data: ?*const anyopaque) !void {
-    const rc = c.libevdev_enable_event_code(self.dev, typ, code, data);
+pub fn enableEventCode(self: Device, code: Event.Code, data: ?*const anyopaque) !void {
+    const rc = c.libevdev_enable_event_code(self.dev, code.getType().intoInt(), code.intoInt(), data);
     if (rc < 0) {
-        log.warn("failed to enable {s}: {s} (device: {s})", .{
-            c.libevdev_event_code_get_name(typ, code),
+        log.warn("failed to enable {}: {s} (device: {s})", .{
+            code,
             c.strerror(-rc),
             self.getName(),
         });
@@ -310,8 +326,8 @@ pub fn enableEventCode(self: Device, typ: c_uint, code: c_uint, data: ?*const an
     }
 }
 
-fn getABSInfo(self: Device, axis: c_uint) [*c]const c.input_absinfo {
-    return c.libevdev_get_abs_info(self.dev, axis);
+fn getABSInfo(self: Device, axis: Event.Code.ABS) [*c]const c.input_absinfo {
+    return c.libevdev_get_abs_info(self.dev, axis.intoInt());
 }
 
 fn getNumSlots(self: Device) c_int {
@@ -338,8 +354,13 @@ pub const VirtualDevice = struct {
         c.libevdev_uinput_destroy(self.uidev);
     }
 
-    pub fn writeEvent(self: VirtualDevice, typ: c_ushort, code: c_ushort, value: c_int) !void {
-        const rc = c.libevdev_uinput_write_event(self.uidev, typ, code, value);
+    pub fn writeEvent(self: VirtualDevice, code: Event.Code, value: c_int) !void {
+        const rc = c.libevdev_uinput_write_event(
+            self.uidev,
+            code.getType().intoInt(),
+            code.intoInt(),
+            value,
+        );
         if (rc < 0) return error.WriteEventFailed;
     }
 
@@ -347,12 +368,3 @@ pub const VirtualDevice = struct {
         return c.libevdev_uinput_get_syspath(self.uidev);
     }
 };
-
-fn newEvent(typ: c_ushort, code: c_ushort, value: c_int) c.input_event {
-    return c.input_event{
-        .time = .{ .tv_sec = 0, .tv_usec = 0 },
-        .type = typ,
-        .code = code,
-        .value = value,
-    };
-}
