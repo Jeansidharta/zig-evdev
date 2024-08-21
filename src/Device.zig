@@ -232,15 +232,19 @@ pub fn ungrab(self: Device) !void {
     }
 }
 
-pub fn copyCapabilities(self: Device, src: Device) !void {
+pub fn copyCapabilities(self: Device, src: Device, force: bool) !void {
     inline for (0..@typeInfo(Property).Enum.fields.len) |prop_u| {
         const prop: Property = @enumFromInt(prop_u);
         if (src.hasProperty(prop)) {
-            try self.enableProperty(prop);
+            self.enableProperty(prop) catch |e| if (force) return e;
         }
     }
     inline for (@typeInfo(Event.Type).Enum.fields) |field| {
-        try self.copyEventCapabilities(src, @field(Event.Type, field.name));
+        self.copyEventCapabilities(
+            src,
+            @field(Event.Type, field.name),
+            force,
+        ) catch |e| if (force) return e;
     }
 }
 
@@ -248,9 +252,10 @@ fn copyEventCapabilities(
     self: Device,
     src: Device,
     comptime typ: Event.Type,
+    force: bool,
 ) !void {
     if (!src.hasEventType(typ)) return;
-    try self.enableEventType(typ);
+    self.enableEventType(typ) catch |e| if (force) return e;
 
     @setEvalBranchQuota(2000);
     const CodeType = typ.CodeType();
@@ -263,7 +268,7 @@ fn copyEventCapabilities(
                 .ABS => src.getABSInfo(codeField),
                 else => null,
             };
-            try self.enableEventCode(code, data);
+            self.enableEventCode(code, data) catch |e| if (force) return e;
         }
     }
 }
