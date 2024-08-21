@@ -23,6 +23,25 @@ pub fn build(b: *Build) void {
 
     const test_step = b.step("test", "Run unit tests");
     test_step.dependOn(&b.addRunArtifact(tests).step);
+
+    inline for ([_][2][]const u8{
+        .{ "ctrl2cap", "Swap CapsLock key for Control key" },
+    }) |example| {
+        const exe = b.addExecutable(.{
+            .name = example[0],
+            .root_source_file = b.path("examples/" ++ example[0] ++ ".zig"),
+            .target = target,
+            .optimize = optimize,
+        });
+        exe.root_module.addImport("evdev", mod);
+        b.installArtifact(exe);
+
+        const run_cmd = b.addRunArtifact(exe);
+        run_cmd.step.dependOn(b.getInstallStep());
+        if (b.args) |args| run_cmd.addArgs(args);
+
+        b.step(example[0], example[1]).dependOn(&run_cmd.step);
+    }
 }
 
 fn setupModule(m: *Build.Module, b: *Build) void {
