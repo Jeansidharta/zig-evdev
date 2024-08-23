@@ -15,10 +15,7 @@ pub fn main() !void {
 
     var args = std.process.args();
     _ = args.next();
-    const keyboard_file = try std.fs.openFileAbsolute(args.next().?, .{ .lock_nonblocking = true });
-    defer keyboard_file.close();
-
-    var keyboard = try evdev.Device.fromFd(gpa, keyboard_file.handle);
+    var keyboard = try evdev.Device.open(gpa, args.next().?);
     defer keyboard.free();
     std.debug.assert(keyboard.isKeyboard());
 

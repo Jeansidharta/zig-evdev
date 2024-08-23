@@ -21,9 +21,10 @@ pub fn new(allocator: Allocator, name: [*c]const u8) Device {
     };
 }
 
-pub fn fromFd(allocator: Allocator, fd: i32) !Device {
+pub fn open(allocator: Allocator, path: []const u8) !Device {
+    const fd = try std.posix.open(path, .{}, 0o444);
     var dev: ?*c.libevdev = undefined;
-    const rc = c.libevdev_new_from_fd(@intCast(fd), &dev);
+    const rc = c.libevdev_new_from_fd(fd, &dev);
     if (rc < 0) {
         log.warn("failed to initialize a device: {s}", .{c.strerror(-rc)});
         return error.InitDeviceFailed;
@@ -36,6 +37,7 @@ pub fn fromFd(allocator: Allocator, fd: i32) !Device {
 
 pub fn free(self: Device) void {
     c.libevdev_free(self.dev);
+    if (self.getFd()) |fd| _ = std.c.close(fd);
 }
 
 // https://source.android.com/docs/core/interaction/input/touch-devices#touch-device-classification
@@ -208,8 +210,9 @@ fn nextEvent(self: Device, flags: c_uint) !?Event {
     }
 }
 
-pub fn getFd(self: Device) c_int {
-    return c.libevdev_get_fd(self.dev);
+pub fn getFd(self: Device) ?c_int {
+    const fd = c.libevdev_get_fd(self.dev);
+    return if (fd == -1) null else fd;
 }
 
 pub fn getName(self: Device) [*c]const u8 {
