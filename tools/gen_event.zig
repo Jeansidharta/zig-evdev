@@ -3,7 +3,8 @@ const c = @cImport(@cInclude("linux/input.h"));
 const std = @import("std");
 
 pub fn main() !void {
-    @setEvalBranchQuota(20000);
+    @setEvalBranchQuota(190000);
+    const allocator = std.heap.page_allocator;
 
     const consts = comptime b: {
         var consts: []const []const u8 = &.{};
@@ -12,7 +13,11 @@ pub fn main() !void {
         break :b consts;
     };
 
-    comptime var code: []const u8 =
+    var s = std.ArrayList(u8).init(allocator);
+    defer s.deinit();
+    var w = s.writer();
+
+    _ = w.write(
         \\code: Code,
         \\value: c_int,
         \\time: @import("std").posix.timeval,
@@ -21,7 +26,7 @@ pub fn main() !void {
         \\    const Instant = @import("std").time.Instant;
         \\    const zero = Instant{ .timestamp = .{
         \\        .tv_sec = 0,
-        \\        .tv_nsec = 0 
+        \\        .tv_nsec = 0,
         \\    } };
         \\    const now = if (!@import("builtin").is_test) Instant.now() catch zero else zero;
         \\    return .{
@@ -35,7 +40,7 @@ pub fn main() !void {
         \\}
         \\
         \\
-    ;
+    ) catch {};
 
     // SYN, KEY, REL, ...
     const types = comptime b: {
@@ -47,12 +52,12 @@ pub fn main() !void {
         break :b types;
     };
 
-    comptime {
-        code = code ++
+    {
+        _ = w.write(
             \\pub const Type = enum(c_ushort) {
             \\
-        ;
-        defer code = code ++
+        ) catch {};
+        defer _ = w.write(
             \\    pub inline fn new(integer: c_ushort) Type {
             \\        return @enumFromInt(integer);
             \\    }
@@ -64,19 +69,19 @@ pub fn main() !void {
             \\    }
             \\};
             \\
-        ;
-        for (types) |typ| code = code ++ std.fmt.comptimePrint(
+        ) catch {};
+        inline for (types) |typ| w.print(
             \\    {s} = {},
             \\
-        , .{ typ, @field(c, "EV_" ++ typ) });
+        , .{ typ, @field(c, "EV_" ++ typ) }) catch {};
     }
 
-    comptime {
-        code = code ++
+    {
+        _ = w.write(
             \\pub const Code = union(Type) {
             \\
-        ;
-        defer code = code ++
+        ) catch {};
+        defer _ = w.write(
             \\    pub inline fn intoInt(self: @This()) c_ushort {
             \\        return switch (self) {
             \\            inline else => |c| c.intoInt(),
@@ -87,36 +92,36 @@ pub fn main() !void {
             \\    }
             \\};
             \\
-        ;
+        ) catch {};
 
         defer {
-            code = code ++
+            _ = w.write(
                 \\    pub inline fn new(@"type": Type, integer: c_ushort) Code {
                 \\        return switch (@"type") {
                 \\
-            ;
-            for (types) |typ| code = code ++ std.fmt.comptimePrint(
+            ) catch {};
+            for (types) |typ| w.print(
                 \\            .{0s} => {0s}.new(integer).intoCode(),
                 \\
-            , .{typ});
-            code = code ++
+            , .{typ}) catch {};
+            _ = w.write(
                 \\        };
                 \\    }
                 \\
-            ;
+            ) catch {};
         }
 
-        for (types) |typ| code = code ++ std.fmt.comptimePrint(
+        for (types) |typ| w.print(
             \\    {0s}: {0s},
             \\
-        , .{typ});
+        , .{typ}) catch {};
 
-        for (types) |typ| {
-            code = code ++ std.fmt.comptimePrint(
+        inline for (types) |typ| {
+            w.print(
                 \\    pub const {s} = enum(c_ushort) {{
                 \\
-            , .{typ});
-            defer code = code ++ std.fmt.comptimePrint(
+            , .{typ}) catch {};
+            defer w.print(
                 \\        pub inline fn new(integer: c_ushort) @This() {{
                 \\            return @enumFromInt(integer);
                 \\        }}
@@ -128,55 +133,52 @@ pub fn main() !void {
                 \\        }}
                 \\    }};
                 \\
-            , .{typ});
+            , .{typ}) catch {};
 
             const Alias = struct {
                 name: []const u8,
                 target: []const u8,
             };
             var vals = [_][]const u8{""} ** std.math.maxInt(c_ushort);
-            var aliases: []const Alias = &.{};
+            var aliases = std.ArrayList(Alias).init(allocator);
+            defer aliases.deinit();
             var is_empty = true;
 
-            consts: for (consts) |cnst| {
-                if (!filter(cnst, typ ++ "_"))
+            consts: inline for (consts) |cnst| {
+                comptime if (!filter(cnst, typ ++ "_"))
                     if (!(std.mem.eql(u8, typ, "KEY") and filter(cnst, "BTN_")))
                         continue;
-                for (types) |t| {
-                    if (std.mem.eql(u8, typ, t) or !filter(cnst, t ++ "_"))
-                        continue;
-                    // - typ != t
-                    // - cnst starts with both typ and t
-                    if (typ.len < t.len)
-                        // t includes typ
-                        continue :consts;
-                }
+                comptime for (types) |t|
+                    if (!std.mem.eql(u8, typ, t) and filter(cnst, t ++ "_"))
+                        // - typ != t
+                        // - cnst starts with both typ and t
+                        if (typ.len < t.len)
+                            // t includes typ
+                            continue :consts;
 
                 is_empty = false;
 
                 const val = @field(c, cnst);
                 defer vals[val] = cnst;
                 if (vals[val].len != 0) {
-                    aliases = aliases ++ &[_]Alias{.{ .name = cnst, .target = vals[val] }};
-                    continue;
+                    try aliases.append(.{ .name = cnst, .target = vals[val] });
+                } else {
+                    w.print(
+                        \\        {s} = {},
+                        \\
+                    , .{ cnst, val }) catch {};
                 }
-                code = code ++ std.fmt.comptimePrint(
-                    \\        {s} = {},
-                    \\
-                , .{ cnst, val });
             }
 
-            for (aliases) |alias| {
-                code = code ++ std.fmt.comptimePrint(
-                    \\        pub const {s} = @This().{s};
-                    \\
-                , .{ alias.name, alias.target });
-            }
+            for (aliases.items) |alias| w.print(
+                \\        pub const {s} = @This().{s};
+                \\
+            , .{ alias.name, alias.target }) catch {};
 
-            if (is_empty) code = code ++
+            if (is_empty) _ = w.write(
                 \\        _,
                 \\
-            ;
+            ) catch {};
         }
     }
 
@@ -185,9 +187,9 @@ pub fn main() !void {
     if (args.next()) |filename| {
         var out = try std.fs.cwd().createFileZ(filename, .{});
         defer out.close();
-        try out.writeAll(code);
+        try out.writeAll(s.items);
     } else {
-        std.debug.print("{s}", .{code});
+        std.debug.print("{s}", .{s.items});
     }
 }
 
