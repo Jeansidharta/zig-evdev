@@ -1,9 +1,9 @@
-const c = @cImport(@cInclude("linux/input.h"));
+const c = @cImport(@cInclude("libevdev/libevdev.h"));
 
 const std = @import("std");
 
 pub fn main() !void {
-    @setEvalBranchQuota(190000);
+    @setEvalBranchQuota(200000);
     const allocator = std.heap.page_allocator;
 
     const consts = comptime b: {
@@ -139,7 +139,6 @@ pub fn main() !void {
                 name: []const u8,
                 target: []const u8,
             };
-            var vals = [_][]const u8{""} ** std.math.maxInt(c_ushort);
             var aliases = std.ArrayList(Alias).init(allocator);
             defer aliases.deinit();
             var is_empty = true;
@@ -158,16 +157,15 @@ pub fn main() !void {
 
                 is_empty = false;
 
-                const val = @field(c, cnst);
-                defer vals[val] = cnst;
-                if (vals[val].len != 0) {
-                    try aliases.append(.{ .name = cnst, .target = vals[val] });
-                } else {
+                const code: c_ushort = @field(c, cnst);
+                const code_name = if (c.libevdev_event_code_get_name(@field(c, "EV_" ++ typ), code)) |p| std.mem.span(p) else cnst;
+                if (std.mem.eql(u8, cnst, code_name))
                     w.print(
                         \\        {s} = {},
                         \\
-                    , .{ cnst, val }) catch {};
-                }
+                    , .{ cnst, code }) catch {}
+                else
+                    try aliases.append(.{ .name = cnst, .target = code_name });
             }
 
             for (aliases.items) |alias| w.print(

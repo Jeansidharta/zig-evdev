@@ -63,12 +63,14 @@ pub fn isSingleTouch(self: Device) bool {
 }
 
 pub fn isGamepad(self: Device) bool {
-    return self.hasEventCode(.{ .KEY = .BTN_GAMEPAD });
+    return self.hasEventCode(
+        .{ .KEY = Event.Code.KEY.BTN_GAMEPAD },
+    );
 }
 
 pub fn isMouse(self: Device) bool {
     inline for ([_]Event.Code{
-        .{ .KEY = .BTN_MOUSE },
+        .{ .KEY = Event.Code.KEY.BTN_MOUSE },
         .{ .REL = .REL_X },
         .{ .REL = .REL_Y },
     }) |code| if (!self.hasEventCode(code)) return false;

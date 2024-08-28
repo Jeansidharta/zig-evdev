@@ -45,18 +45,20 @@ pub fn build(b: *Build) void {
 }
 
 fn setupModule(m: *Build.Module, b: *Build) void {
-    if (b.lazyDependency("libevdev", .{})) |dep| {
-        m.addIncludePath(dep.path("."));
-    }
-    m.linkSystemLibrary("libevdev", .{ .needed = true });
-
     const gen_event = b.addExecutable(.{
         .name = "gen_event",
         .root_source_file = b.path("tools/gen_event.zig"),
         .target = b.graph.host,
         .link_libc = true,
     });
+    linkLibevdev(&gen_event.root_module, b);
     m.addAnonymousImport("Event", .{
         .root_source_file = b.addRunArtifact(gen_event).addOutputFileArg("Event.zig"),
     });
+    linkLibevdev(m, b);
+}
+
+fn linkLibevdev(m: *Build.Module, b: *Build) void {
+    m.linkSystemLibrary("libevdev", .{ .needed = true });
+    if (b.lazyDependency("libevdev", .{})) |dep| m.addIncludePath(dep.path("."));
 }
