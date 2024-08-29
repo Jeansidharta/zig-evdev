@@ -20,10 +20,9 @@ pub fn build(b: *Build) void {
         .link_libc = true,
     });
     setupModule(&tests.root_module, b);
+    b.step("test", "Run unit tests").dependOn(&b.addRunArtifact(tests).step);
 
-    const test_step = b.step("test", "Run unit tests");
-    test_step.dependOn(&b.addRunArtifact(tests).step);
-
+    const examples_step = b.step("examples", "Install all examples");
     inline for ([_][2][]const u8{
         .{ "ctrl2cap", "Swap CapsLock key for Control key" },
     }) |example| {
@@ -34,13 +33,16 @@ pub fn build(b: *Build) void {
             .optimize = optimize,
         });
         exe.root_module.addImport("evdev", mod);
-        b.installArtifact(exe);
+
+        const artifact = b.addInstallArtifact(exe, .{});
+        examples_step.dependOn(&artifact.step);
 
         const run_cmd = b.addRunArtifact(exe);
-        run_cmd.step.dependOn(b.getInstallStep());
+        run_cmd.step.dependOn(&artifact.step);
         if (b.args) |args| run_cmd.addArgs(args);
 
-        b.step(example[0], example[1]).dependOn(&run_cmd.step);
+        const run_step = b.step(b.fmt("example-{s}", .{example[0]}), example[1]);
+        run_step.dependOn(&run_cmd.step);
     }
 }
 
