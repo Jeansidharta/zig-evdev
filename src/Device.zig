@@ -36,8 +36,8 @@ pub fn open(allocator: Allocator, path: []const u8) !Device {
 }
 
 pub fn free(self: Device) void {
-    c.libevdev_free(self.dev);
-    if (self.getFd()) |fd| _ = std.c.close(fd);
+    defer c.libevdev_free(self.dev);
+    if (self.getFd()) |fd| std.posix.close(fd);
 }
 
 // https://source.android.com/docs/core/interaction/input/touch-devices#touch-device-classification
