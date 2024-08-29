@@ -67,7 +67,25 @@ A Zig wrapper for [libevdev](https://www.freedesktop.org/software/libevdev/doc/l
     - [ ] kernel_set_led_values
     - [ ] set_clock_id
 - Miscellaneous helper functions
-    - [ ] ...
+    - [ ] event_is_type
+    - [ ] event_is_code
+    - [x] event_type_get_name
+    - [x] event_code_get_name
+    - [ ] event_value_get_name
+    - [ ] property_get_name
+    - [ ] event_type_get_max
+    - [ ] event_type_from_name
+    - [ ] event_type_from_name_n
+    - [ ] event_code_from_name
+    - [ ] event_code_from_name_n
+    - [ ] event_value_from_name
+    - [ ] event_type_from_code_name
+    - [ ] event_type_from_code_name_n
+    - [ ] event_code_from_code_name
+    - [ ] event_code_from_code_name_n
+    - [ ] event_value_from_name_n
+    - [ ] property_from_name
+    - [ ] property_from_name_n
 - Event handling
     - [x] next_event
     - [ ] has_event_pending

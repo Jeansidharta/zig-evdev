@@ -67,6 +67,11 @@ pub fn main() !void {
             \\    pub inline fn CodeType(comptime self: @This()) type {
             \\        return @import("std").meta.TagPayload(Code, self);
             \\    }
+            \\    pub inline fn getName(self: @This()) []const u8 {
+            \\        return switch (self) {
+            \\            inline else => |t| "EV_" ++ @tagName(t),
+            \\        };
+            \\    }
             \\};
             \\
         ) catch {};
@@ -81,10 +86,21 @@ pub fn main() !void {
             \\pub const Code = union(Type) {
             \\
         ) catch {};
+
         defer _ = w.write(
+            \\    pub inline fn new(@"type": Type, integer: c_ushort) Code {
+            \\        return switch (@"type") {
+            \\            inline else => |t| t.CodeType().new(integer).intoCode(),
+            \\        };
+            \\    }
             \\    pub inline fn intoInt(self: @This()) c_ushort {
             \\        return switch (self) {
             \\            inline else => |c| c.intoInt(),
+            \\        };
+            \\    }
+            \\    pub inline fn getName(self: @This()) ?[]const u8 {
+            \\        return switch (self) {
+            \\            inline else => |c| c.getName(),
             \\        };
             \\    }
             \\    pub inline fn getType(self: @This()) Type {
@@ -93,23 +109,6 @@ pub fn main() !void {
             \\};
             \\
         ) catch {};
-
-        defer {
-            _ = w.write(
-                \\    pub inline fn new(@"type": Type, integer: c_ushort) Code {
-                \\        return switch (@"type") {
-                \\
-            ) catch {};
-            for (types) |typ| w.print(
-                \\            .{0s} => {0s}.new(integer).intoCode(),
-                \\
-            , .{typ}) catch {};
-            _ = w.write(
-                \\        };
-                \\    }
-                \\
-            ) catch {};
-        }
 
         for (types) |typ| w.print(
             \\    {0s}: {0s},
@@ -130,6 +129,13 @@ pub fn main() !void {
                 \\        }}
                 \\        pub inline fn intoCode(self: @This()) Code {{
                 \\            return Code{{ .{s} = self }};
+                \\        }}
+                \\        pub inline fn getName(self: @This()) ?[]const u8 {{
+                \\            comptime if (@typeInfo(@This()).Enum.fields.len == 0) return null;
+                \\            @setEvalBranchQuota(2000);
+                \\            return switch (self) {{
+                \\                inline else => |c| @tagName(c),
+                \\            }};
                 \\        }}
                 \\    }};
                 \\
