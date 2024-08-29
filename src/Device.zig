@@ -186,17 +186,18 @@ fn nextEvent(self: Device, flags: c_uint) !?Event {
     const rc = c.libevdev_next_event(self.dev, flags, &ev);
     switch (rc) {
         c.LIBEVDEV_READ_STATUS_SUCCESS, c.LIBEVDEV_READ_STATUS_SYNC => {
-            log.debug("event received: {s} {s}: {} (device: {s})", .{
-                c.libevdev_event_type_get_name(ev.type),
-                c.libevdev_event_code_get_name(ev.type, ev.code),
-                ev.value,
-                self.getName(),
-            });
-            return Event{
+            const e = Event{
                 .code = Event.Code.new(Event.Type.new(ev.type), ev.code),
                 .time = .{ .tv_sec = ev.time.tv_sec, .tv_usec = ev.time.tv_usec },
                 .value = ev.value,
             };
+            log.debug("event received: {s} {s}: {} (device: {s})", .{
+                e.code.getType().getName(),
+                e.code.getName() orelse "?",
+                e.value,
+                self.getName(),
+            });
+            return e;
         },
         -c.EAGAIN => {
             log.debug("no events are currently available (device: {s})", .{self.getName()});
@@ -324,7 +325,9 @@ pub fn disableProperty(self: Device, prop: Property) !void {
     const rc = c.libevdev_disable_property(self.dev, @intFromEnum(prop));
     if (rc < 0) {
         log.warn("failed to disable property {}: {s} (device: {s})", .{
-            prop, c.strerror(-rc), self.getName(),
+            prop,
+            c.strerror(-rc),
+            self.getName(),
         });
         return error.DisablePropertyFailed;
     }
@@ -333,8 +336,8 @@ pub fn disableProperty(self: Device, prop: Property) !void {
 pub fn enableEventType(self: Device, typ: Event.Type) !void {
     const rc = c.libevdev_enable_event_type(self.dev, typ.intoInt());
     if (rc < 0) {
-        log.warn("failed to enable {}: {s} (device: {s})", .{
-            typ,
+        log.warn("failed to enable {s}: {s} (device: {s})", .{
+            typ.getName(),
             c.strerror(-rc),
             self.getName(),
         });
@@ -345,8 +348,8 @@ pub fn enableEventType(self: Device, typ: Event.Type) !void {
 pub fn disableEventType(self: Device, typ: Event.Type) !void {
     const rc = c.libevdev_disable_event_type(self.dev, typ.intoInt());
     if (rc < 0) {
-        log.warn("failed to disable {}: {s} (device: {s})", .{
-            typ,
+        log.warn("failed to disable {s}: {s} (device: {s})", .{
+            typ.getName(),
             c.strerror(-rc),
             self.getName(),
         });
@@ -357,8 +360,9 @@ pub fn disableEventType(self: Device, typ: Event.Type) !void {
 pub fn enableEventCode(self: Device, code: Event.Code, data: ?*const anyopaque) !void {
     const rc = c.libevdev_enable_event_code(self.dev, code.getType().intoInt(), code.intoInt(), data);
     if (rc < 0) {
-        log.warn("failed to enable {}: {s} (device: {s})", .{
-            code,
+        log.warn("failed to enable {s} {s}: {s} (device: {s})", .{
+            code.getType().getName(),
+            code.getName() orelse "?",
             c.strerror(-rc),
             self.getName(),
         });
@@ -369,8 +373,9 @@ pub fn enableEventCode(self: Device, code: Event.Code, data: ?*const anyopaque) 
 pub fn disableEventCode(self: Device, code: Event.Code) !void {
     const rc = c.libevdev_disable_event_code(self.dev, code.getType().intoInt(), code.intoInt());
     if (rc < 0) {
-        log.warn("failed to disable {}: {s} (device: {s})", .{
-            code,
+        log.warn("failed to disable {s} {s}: {s} (device: {s})", .{
+            code.getType().getName(),
+            code.getName() orelse "?",
             c.strerror(-rc),
             self.getName(),
         });
@@ -405,7 +410,15 @@ pub const VirtualDevice = struct {
             code.intoInt(),
             value,
         );
-        if (rc < 0) return error.WriteEventFailed;
+        if (rc < 0) {
+            log.warn("failed to write {s} {s}: {s} (devnode: {s})", .{
+                code.getType().getName(),
+                code.getName() orelse "?",
+                c.strerror(-rc),
+                self.getDevNode(),
+            });
+            return error.WriteEventFailed;
+        }
     }
 
     pub fn getFd(self: VirtualDevice) c_int {
