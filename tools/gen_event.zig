@@ -67,7 +67,7 @@ pub fn main() !void {
             \\    pub inline fn CodeType(comptime self: @This()) type {
             \\        return @import("std").meta.TagPayload(Code, self);
             \\    }
-            \\    pub inline fn getName(self: @This()) []const u8 {
+            \\    pub fn getName(self: @This()) []const u8 {
             \\        return switch (self) {
             \\            inline else => |t| "EV_" ++ @tagName(t),
             \\        };
@@ -88,17 +88,17 @@ pub fn main() !void {
         ) catch {};
 
         defer _ = w.write(
-            \\    pub inline fn new(@"type": Type, integer: c_ushort) Code {
+            \\    pub fn new(@"type": Type, integer: c_ushort) Code {
             \\        return switch (@"type") {
             \\            inline else => |t| t.CodeType().new(integer).intoCode(),
             \\        };
             \\    }
-            \\    pub inline fn intoInt(self: @This()) c_ushort {
+            \\    pub fn intoInt(self: @This()) c_ushort {
             \\        return switch (self) {
             \\            inline else => |c| c.intoInt(),
             \\        };
             \\    }
-            \\    pub inline fn getName(self: @This()) ?[]const u8 {
+            \\    pub fn getName(self: @This()) ?[]const u8 {
             \\        return switch (self) {
             \\            inline else => |c| c.getName(),
             \\        };
@@ -130,9 +130,8 @@ pub fn main() !void {
                 \\        pub inline fn intoCode(self: @This()) Code {{
                 \\            return Code{{ .{s} = self }};
                 \\        }}
-                \\        pub inline fn getName(self: @This()) ?[]const u8 {{
-                \\            comptime if (@typeInfo(@This()).Enum.fields.len == 0) return null;
-                \\            @setEvalBranchQuota(2000);
+                \\        pub fn getName(self: @This()) ?[]const u8 {{
+                \\            if (comptime @typeInfo(@This()).Enum.fields.len == 0) return null;
                 \\            return switch (self) {{
                 \\                inline else => |c| @tagName(c),
                 \\            }};
