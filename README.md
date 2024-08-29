@@ -5,7 +5,7 @@ A Zig wrapper for [libevdev](https://www.freedesktop.org/software/libevdev/doc/l
 ## Status
 
 - Initialization and setup
-    - [ ] new
+    - [x] new
     - [x] new_from_fd
     - [x] free
     - [x] grab
@@ -41,31 +41,31 @@ A Zig wrapper for [libevdev](https://www.freedesktop.org/software/libevdev/doc/l
     - [x] get_num_slots
     - [ ] get_current_slot
 - Modifying the appearance or capabilities of the device
-    - [ ] set_name 
-    - [ ] set_phys 
-    - [ ] set_uniq 
+    - [x] set_name
+    - [ ] set_phys
+    - [ ] set_uniq
     - [ ] set_id_product
     - [ ] set_id_vendor
     - [ ] set_id_bustype
     - [ ] set_id_version
     - [x] enable_property
     - [x] disable_property
-    - [ ] set_event_value 
-    - [ ] set_slot_value 
-    - [ ] set_abs_info 
-        - [ ] set_abs_minimum 
-        - [ ] set_abs_maximum 
-        - [ ] set_abs_fuzz 
-        - [ ] set_abs_flat 
-        - [ ] set_abs_resolution 
-    - [x] enable_event_type 
-    - [ ] disable_event_type 
-    - [x] enable_event_code 
-    - [ ] disable_event_code 
-    - [ ] kernel_set_abs_info 
-    - [ ] kernel_set_led_value 
-    - [ ] kernel_set_led_values 
-    - [ ] set_clock_id 
+    - [ ] set_event_value
+    - [ ] set_slot_value
+    - [ ] set_abs_info
+        - [ ] set_abs_minimum
+        - [ ] set_abs_maximum
+        - [ ] set_abs_fuzz
+        - [ ] set_abs_flat
+        - [ ] set_abs_resolution
+    - [x] enable_event_type
+    - [x] disable_event_type
+    - [x] enable_event_code
+    - [x] disable_event_code
+    - [ ] kernel_set_abs_info
+    - [ ] kernel_set_led_value
+    - [ ] kernel_set_led_values
+    - [ ] set_clock_id
 - Miscellaneous helper functions
     - [ ] ...
 - Event handling
@@ -74,9 +74,9 @@ A Zig wrapper for [libevdev](https://www.freedesktop.org/software/libevdev/doc/l
 - uinput device creation
     - [x] uinput_create_from_device
     - [x] uinput_destroy
-    - [ ] get_fd
+    - [x] get_fd
     - [x] get_syspath
-    - [ ] get_devnode
+    - [x] get_devnode
     - [x] get_write_event
 
 ## License

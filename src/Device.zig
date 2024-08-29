@@ -212,15 +212,6 @@ fn nextEvent(self: Device, flags: c_uint) !?Event {
     }
 }
 
-pub fn getFd(self: Device) ?c_int {
-    const fd = c.libevdev_get_fd(self.dev);
-    return if (fd == -1) null else fd;
-}
-
-pub fn getName(self: Device) [*c]const u8 {
-    return c.libevdev_get_name(self.dev);
-}
-
 pub fn grab(self: Device) !void {
     const rc = c.libevdev_grab(self.dev, c.LIBEVDEV_GRAB);
     if (rc < 0) {
@@ -270,7 +261,7 @@ fn copyEventCapabilities(
 
         if (src.hasEventCode(code)) {
             const data = switch (typ) {
-                .ABS => src.getABSInfo(codeField),
+                .ABS => src.getAbsInfo(codeField),
                 else => null,
             };
             self.enableEventCode(code, data) catch |e| if (force) return e;
@@ -288,6 +279,15 @@ pub const Property = enum(c_uint) {
     accelerometer = c.INPUT_PROP_ACCELEROMETER,
 };
 
+pub fn getFd(self: Device) ?c_int {
+    const fd = c.libevdev_get_fd(self.dev);
+    return if (fd == -1) null else fd;
+}
+
+pub fn getName(self: Device) []const u8 {
+    return std.mem.span(c.libevdev_get_name(self.dev));
+}
+
 pub fn hasProperty(self: Device, prop: Property) bool {
     return c.libevdev_has_property(self.dev, @intFromEnum(prop)) == 1;
 }
@@ -300,6 +300,14 @@ pub fn hasEventCode(self: Device, code: Event.Code) bool {
     return c.libevdev_has_event_code(self.dev, code.getType().intoInt(), code.intoInt()) == 1;
 }
 
+fn getAbsInfo(self: Device, axis: Event.Code.ABS) [*c]const c.input_absinfo {
+    return c.libevdev_get_abs_info(self.dev, axis.intoInt());
+}
+
+fn getNumSlots(self: Device) c_int {
+    return c.libevdev_get_num_slots(self.dev);
+}
+
 pub fn enableProperty(self: Device, prop: Property) !void {
     const rc = c.libevdev_enable_property(self.dev, @intFromEnum(prop));
     if (rc < 0) {
@@ -309,6 +317,16 @@ pub fn enableProperty(self: Device, prop: Property) !void {
             self.getName(),
         });
         return error.EnablePropertyFailed;
+    }
+}
+
+pub fn disableProperty(self: Device, prop: Property) !void {
+    const rc = c.libevdev_disable_property(self.dev, @intFromEnum(prop));
+    if (rc < 0) {
+        log.warn("failed to disable property {}: {s} (device: {s})", .{
+            prop, c.strerror(-rc), self.getName(),
+        });
+        return error.DisablePropertyFailed;
     }
 }
 
@@ -324,6 +342,18 @@ pub fn enableEventType(self: Device, typ: Event.Type) !void {
     }
 }
 
+pub fn disableEventType(self: Device, typ: Event.Type) !void {
+    const rc = c.libevdev_disable_event_type(self.dev, typ.intoInt());
+    if (rc < 0) {
+        log.warn("failed to disable {}: {s} (device: {s})", .{
+            typ,
+            c.strerror(-rc),
+            self.getName(),
+        });
+        return error.DisableEventTypeFailed;
+    }
+}
+
 pub fn enableEventCode(self: Device, code: Event.Code, data: ?*const anyopaque) !void {
     const rc = c.libevdev_enable_event_code(self.dev, code.getType().intoInt(), code.intoInt(), data);
     if (rc < 0) {
@@ -336,12 +366,16 @@ pub fn enableEventCode(self: Device, code: Event.Code, data: ?*const anyopaque) 
     }
 }
 
-fn getABSInfo(self: Device, axis: Event.Code.ABS) [*c]const c.input_absinfo {
-    return c.libevdev_get_abs_info(self.dev, axis.intoInt());
-}
-
-fn getNumSlots(self: Device) c_int {
-    return c.libevdev_get_num_slots(self.dev);
+pub fn disableEventCode(self: Device, code: Event.Code) !void {
+    const rc = c.libevdev_disable_event_code(self.dev, code.getType().intoInt(), code.intoInt());
+    if (rc < 0) {
+        log.warn("failed to disable {}: {s} (device: {s})", .{
+            code,
+            c.strerror(-rc),
+            self.getName(),
+        });
+        return error.DisableEventCodeFailed;
+    }
 }
 
 pub fn createVirtualDevice(self: *const Device) !VirtualDevice {
@@ -374,7 +408,15 @@ pub const VirtualDevice = struct {
         if (rc < 0) return error.WriteEventFailed;
     }
 
-    pub fn getPath(self: VirtualDevice) [*c]const u8 {
-        return c.libevdev_uinput_get_syspath(self.uidev);
+    pub fn getFd(self: VirtualDevice) c_int {
+        return c.libevdev_uinput_get_fd(self.uidev);
+    }
+
+    pub fn getSysPath(self: VirtualDevice) []const u8 {
+        return std.mem.span(c.libevdev_uinput_get_syspath(self.uidev));
+    }
+
+    pub fn getDevNode(self: VirtualDevice) []const u8 {
+        return std.mem.span(c.libevdev_uinput_get_devnode(self.uidev));
     }
 };
