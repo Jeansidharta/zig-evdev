@@ -2,6 +2,15 @@
 
 A Zig wrapper for [libevdev](https://www.freedesktop.org/software/libevdev/doc/latest/) with High-Level API
 
+## Installation
+
+### Build dependencies
+
+- Zig
+- Python3
+
+Python3 is used to run [libevdev/make-event-names.py](https://gitlab.freedesktop.org/libevdev/libevdev/-/blob/master/libevdev/make-event-names.py).
+
 ## Status
 
 - Initialization and setup
