@@ -23,7 +23,7 @@ pub fn build(b: *Build) void {
     const event_mod = b: {
         const exe = b.addExecutable(.{
             .name = "gen_event",
-            .root_source_file = b.path("tools/gen_event.zig"),
+            .root_source_file = b.path("build/gen_event.zig"),
             .target = b.graph.host,
             .link_libc = true,
         });
@@ -112,7 +112,7 @@ fn buildLibevdev(
     const event_names_h = b: {
         const run = b.addRunArtifact(b.addExecutable(.{
             .name = "capture_out",
-            .root_source_file = b.path("tools/capture_out.zig"),
+            .root_source_file = b.path("build/capture_out.zig"),
             .target = target,
             .optimize = optimize,
         }));
@@ -130,7 +130,7 @@ fn buildLibevdev(
     };
 
     lib.addIncludePath(event_names_h.dirname());
-    lib.addIncludePath(b.path("tools/libevdev"));
+    lib.addIncludePath(b.path("build/libevdev"));
     lib.addIncludePath(source.path("."));
     lib.addIncludePath(source.path("include"));
 
