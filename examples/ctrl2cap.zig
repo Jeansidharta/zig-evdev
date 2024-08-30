@@ -35,10 +35,11 @@ pub fn main() !void {
             std.debug.print("{}\n", .{event});
             var out = event;
             switch (out.code) {
-                .KEY => |*k| if (k.* == .KEY_CAPSLOCK) {
-                    k.* = .KEY_LEFTCTRL;
-                } else if (k.* == .KEY_Q) {
-                    break :main;
+                .KEY => |*k| switch (k.*) {
+                    .KEY_CAPSLOCK => k.* = .KEY_LEFTCTRL,
+                    .KEY_LEFTCTRL => k.* = .KEY_CAPSLOCK,
+                    .KEY_Q => break :main,
+                    else => {},
                 },
                 else => {},
             }
