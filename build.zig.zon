@@ -3,12 +3,15 @@
     .version = "0.0.0",
 
     .paths = .{
+        "build",
         "build.zig",
         "build.zig.zon",
         "src",
         "LICENSE",
         "README.md",
     },
+
+    .minimum_zig_version = "0.13.0",
 
     .dependencies = .{
         .libevdev = .{
