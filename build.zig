@@ -109,12 +109,15 @@ fn buildLibevdev(
     lib.linkLibC();
     lib.linkSystemLibrary("rt");
 
+    lib.addConfigHeader(b.addConfigHeader(.{ .include_path = "config.h" }, .{
+        ._GNU_SOURCE = 1,
+    }));
+
     const event_names_h = b: {
         const run = b.addRunArtifact(b.addExecutable(.{
             .name = "capture_out",
             .root_source_file = b.path("build/capture_out.zig"),
-            .target = target,
-            .optimize = optimize,
+            .target = b.graph.host,
         }));
         const out = run.addOutputFileArg("libevdev/event-names.h");
         run.addFileArg(source.path("libevdev/make-event-names.py"));
@@ -130,7 +133,6 @@ fn buildLibevdev(
     };
 
     lib.addIncludePath(event_names_h.dirname());
-    lib.addIncludePath(b.path("build/libevdev"));
     lib.addIncludePath(source.path("."));
     lib.addIncludePath(source.path("include"));
 
@@ -160,8 +162,6 @@ fn buildLibevdev(
 
     lib.installHeader(source.path("libevdev/libevdev.h"), "libevdev/libevdev.h");
     lib.installHeader(source.path("libevdev/libevdev-uinput.h"), "libevdev/libevdev-uinput.h");
-
-    b.installArtifact(lib);
 
     return lib;
 }
