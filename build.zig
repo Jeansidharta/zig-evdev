@@ -14,10 +14,6 @@ pub fn build(b: *Build) void {
         buildLibevdev(b, target, optimize, dep, static)
     else
         null;
-    const libevdev_include: ?Build.LazyPath = if (libevdev) |lib|
-        if (lib.installed_headers_include_tree) |tree| tree.getDirectory() else null
-    else
-        null;
 
     // event module
     const event_mod = b: {
@@ -28,7 +24,6 @@ pub fn build(b: *Build) void {
             .link_libc = true,
         });
         if (libevdev) |lib| exe.root_module.linkLibrary(lib);
-        if (libevdev_include) |p| exe.root_module.addIncludePath(p);
         break :b Build.Module.CreateOptions{
             .root_source_file = b.addRunArtifact(exe).addOutputFileArg("Event.zig"),
         };
@@ -42,7 +37,6 @@ pub fn build(b: *Build) void {
         .link_libc = true,
     });
     if (libevdev) |lib| mod.linkLibrary(lib);
-    if (libevdev_include) |p| mod.addIncludePath(p);
     mod.addAnonymousImport("Event", event_mod);
 
     // tests
@@ -53,7 +47,6 @@ pub fn build(b: *Build) void {
         .link_libc = true,
     });
     if (libevdev) |lib| tests.root_module.linkLibrary(lib);
-    if (libevdev_include) |p| tests.root_module.addIncludePath(p);
     tests.root_module.addAnonymousImport("Event", event_mod);
     b.step("test", "Run unit tests").dependOn(&b.addRunArtifact(tests).step);
 
