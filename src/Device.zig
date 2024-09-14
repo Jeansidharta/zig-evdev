@@ -1,42 +1,37 @@
-const c = @import("c_api.zig");
-
 const std = @import("std");
 const log = std.log.scoped(.evdev);
 const Allocator = std.mem.Allocator;
 const ArrayList = std.ArrayList;
 
 const Event = @import("Event");
+const raw = @import("raw.zig");
 
 const Device = @This();
 
-dev: ?*c.libevdev,
+raw: raw.Device,
 allocator: Allocator,
 
 pub fn new(allocator: Allocator, name: [*c]const u8) Device {
-    const dev: ?*c.libevdev = c.libevdev_new();
-    c.libevdev_set_name(dev, name);
+    var dev = raw.Device.new();
+    dev.setName(name);
     return Device{
-        .dev = dev,
+        .raw = dev,
         .allocator = allocator,
     };
 }
 
 pub fn open(allocator: Allocator, path: []const u8) !Device {
     const fd = try std.posix.open(path, .{}, 0o444);
-    var dev: ?*c.libevdev = undefined;
-    const rc = c.libevdev_new_from_fd(fd, &dev);
-    if (rc < 0) {
-        log.warn("failed to initialize a device: {s}", .{c.strerror(-rc)});
-        return error.InitDeviceFailed;
-    }
+    var dev = raw.Device.new();
+    try dev.setFd(fd);
     return Device{
-        .dev = dev,
+        .raw = dev,
         .allocator = allocator,
     };
 }
 
 pub fn free(self: Device) void {
-    defer c.libevdev_free(self.dev);
+    defer self.raw.free();
     if (self.getFd()) |fd| std.posix.close(fd);
 }
 
@@ -104,9 +99,10 @@ pub fn readEvents(self: Device) !?[]const Event {
         // read all events currently available on the device when SYN_DROPPED event is received
         while (true) {
             log.info("handling dropped events...", .{});
-            if (try self.nextEvent(ReadFlags.SYNC)) |ev2| {
-                try events.append(ev2);
-            } else break;
+            if (try self.nextEvent(ReadFlags.SYNC)) |ev2|
+                try events.append(ev2)
+            else
+                break;
         }
     }
 
@@ -174,62 +170,21 @@ test "removeInvalidEvents" {
     try std.testing.expectEqualDeep(expected, actual);
 }
 
-const ReadFlags = struct {
-    const NORMAL = c.LIBEVDEV_READ_FLAG_NORMAL;
-    const BLOCKING = c.LIBEVDEV_READ_FLAG_BLOCKING;
-    const SYNC = c.LIBEVDEV_READ_FLAG_SYNC;
-    const FORCE_SYNC = c.LIBEVDEV_READ_FLAG_FORCE_SYNC;
-};
+const ReadFlags = raw.Device.ReadFlags;
 
 fn nextEvent(self: Device, flags: c_uint) !?Event {
-    var ev: c.input_event = undefined;
-    const rc = c.libevdev_next_event(self.dev, flags, &ev);
-    switch (rc) {
-        c.LIBEVDEV_READ_STATUS_SUCCESS, c.LIBEVDEV_READ_STATUS_SYNC => {
-            const e = Event{
-                .code = Event.Code.new(Event.Type.new(ev.type), ev.code),
-                .time = .{ .tv_sec = ev.time.tv_sec, .tv_usec = ev.time.tv_usec },
-                .value = ev.value,
-            };
-            log.debug("event received: {s} {s}: {} (device: {s})", .{
-                e.code.getType().getName(),
-                e.code.getName() orelse "?",
-                e.value,
-                self.getName(),
-            });
-            return e;
-        },
-        -c.EAGAIN => {
-            log.debug("no events are currently available (device: {s})", .{self.getName()});
-            return null;
-        },
-        else => {
-            log.warn("failed to read a next event: {s} (device: {s})", .{
-                c.strerror(-rc),
-                self.getName(),
-            });
-            return error.ReadEventFailed;
-        },
-    }
+    return self.raw.nextEvent(flags);
 }
 
 pub fn grab(self: Device) !void {
-    const rc = c.libevdev_grab(self.dev, c.LIBEVDEV_GRAB);
-    if (rc < 0) {
-        log.warn("grab failed: {s} (device: {s})", .{ c.strerror(-rc), self.getName() });
-        return error.GrabFailed;
-    }
+    return self.raw.grab();
 }
 
 pub fn ungrab(self: Device) !void {
-    const rc = c.libevdev_grab(self.dev, c.LIBEVDEV_UNGRAB);
-    if (rc < 0) {
-        log.warn("ungrab failed: {s} (device: {s})", .{ c.strerror(-rc), self.getName() });
-        return error.UngrabFailed;
-    }
+    return self.raw.ungrab();
 }
 
-pub fn copyCapabilities(self: Device, src: Device, force: bool) !void {
+pub fn copyCapabilities(self: *Device, src: Device, force: bool) !void {
     inline for (0..@typeInfo(Property).Enum.fields.len) |prop_u| {
         const prop: Property = @enumFromInt(prop_u);
         if (src.hasProperty(prop)) {
@@ -246,7 +201,7 @@ pub fn copyCapabilities(self: Device, src: Device, force: bool) !void {
 }
 
 fn copyEventCapabilities(
-    self: Device,
+    self: *Device,
     src: Device,
     comptime typ: Event.Type,
     force: bool,
@@ -270,166 +225,84 @@ fn copyEventCapabilities(
     }
 }
 
-pub const Property = enum(c_uint) {
-    pointer = c.INPUT_PROP_POINTER,
-    direct = c.INPUT_PROP_DIRECT,
-    buttonpad = c.INPUT_PROP_BUTTONPAD,
-    semi_mt = c.INPUT_PROP_SEMI_MT,
-    topbuttonpad = c.INPUT_PROP_TOPBUTTONPAD,
-    pointing_stick = c.INPUT_PROP_POINTING_STICK,
-    accelerometer = c.INPUT_PROP_ACCELEROMETER,
-};
+pub const Property = raw.Property;
 
 pub fn getFd(self: Device) ?c_int {
-    const fd = c.libevdev_get_fd(self.dev);
-    return if (fd == -1) null else fd;
+    return self.raw.getFd();
 }
 
 pub fn getName(self: Device) []const u8 {
-    return std.mem.span(c.libevdev_get_name(self.dev));
+    return self.raw.getName();
 }
 
 pub fn hasProperty(self: Device, prop: Property) bool {
-    return c.libevdev_has_property(self.dev, @intFromEnum(prop)) == 1;
+    return self.raw.hasProperty(prop);
 }
 
 pub fn hasEventType(self: Device, typ: Event.Type) bool {
-    return c.libevdev_has_event_type(self.dev, typ.intoInt()) == 1;
+    return self.raw.hasEventType(typ);
 }
 
 pub fn hasEventCode(self: Device, code: Event.Code) bool {
-    return c.libevdev_has_event_code(self.dev, code.getType().intoInt(), code.intoInt()) == 1;
+    return self.raw.hasEventCode(code);
 }
 
-fn getAbsInfo(self: Device, axis: Event.Code.ABS) [*c]const c.input_absinfo {
-    return c.libevdev_get_abs_info(self.dev, axis.intoInt());
+fn getAbsInfo(self: Device, axis: Event.Code.ABS) raw.AbsInfo {
+    return self.raw.getAbsInfo(axis);
 }
 
 fn getNumSlots(self: Device) c_int {
-    return c.libevdev_get_num_slots(self.dev);
+    return self.raw.getNumSlots();
 }
 
-pub fn enableProperty(self: Device, prop: Property) !void {
-    const rc = c.libevdev_enable_property(self.dev, @intFromEnum(prop));
-    if (rc < 0) {
-        log.warn("failed to enable property {}: {s} (device: {s})", .{
-            prop,
-            c.strerror(-rc),
-            self.getName(),
-        });
-        return error.EnablePropertyFailed;
-    }
+pub fn enableProperty(self: *Device, prop: Property) !void {
+    return self.raw.enableProperty(prop);
 }
 
-pub fn disableProperty(self: Device, prop: Property) !void {
-    const rc = c.libevdev_disable_property(self.dev, @intFromEnum(prop));
-    if (rc < 0) {
-        log.warn("failed to disable property {}: {s} (device: {s})", .{
-            prop,
-            c.strerror(-rc),
-            self.getName(),
-        });
-        return error.DisablePropertyFailed;
-    }
+pub fn disableProperty(self: *Device, prop: Property) !void {
+    return self.raw.disableProperty(prop);
 }
 
-pub fn enableEventType(self: Device, typ: Event.Type) !void {
-    const rc = c.libevdev_enable_event_type(self.dev, typ.intoInt());
-    if (rc < 0) {
-        log.warn("failed to enable {s}: {s} (device: {s})", .{
-            typ.getName(),
-            c.strerror(-rc),
-            self.getName(),
-        });
-        return error.EnableEventTypeFailed;
-    }
+pub fn enableEventType(self: *Device, typ: Event.Type) !void {
+    return self.raw.enableEventType(typ);
 }
 
-pub fn disableEventType(self: Device, typ: Event.Type) !void {
-    const rc = c.libevdev_disable_event_type(self.dev, typ.intoInt());
-    if (rc < 0) {
-        log.warn("failed to disable {s}: {s} (device: {s})", .{
-            typ.getName(),
-            c.strerror(-rc),
-            self.getName(),
-        });
-        return error.DisableEventTypeFailed;
-    }
+pub fn disableEventType(self: *Device, typ: Event.Type) !void {
+    return self.raw.disableEventType(typ);
 }
 
-pub fn enableEventCode(self: Device, code: Event.Code, data: ?*const anyopaque) !void {
-    const rc = c.libevdev_enable_event_code(self.dev, code.getType().intoInt(), code.intoInt(), data);
-    if (rc < 0) {
-        log.warn("failed to enable {s} {s}: {s} (device: {s})", .{
-            code.getType().getName(),
-            code.getName() orelse "?",
-            c.strerror(-rc),
-            self.getName(),
-        });
-        return error.EnableEventCodeFailed;
-    }
+pub fn enableEventCode(self: *Device, code: Event.Code, data: ?*const anyopaque) !void {
+    return self.raw.enableEventCode(code, data);
 }
 
-pub fn disableEventCode(self: Device, code: Event.Code) !void {
-    const rc = c.libevdev_disable_event_code(self.dev, code.getType().intoInt(), code.intoInt());
-    if (rc < 0) {
-        log.warn("failed to disable {s} {s}: {s} (device: {s})", .{
-            code.getType().getName(),
-            code.getName() orelse "?",
-            c.strerror(-rc),
-            self.getName(),
-        });
-        return error.DisableEventCodeFailed;
-    }
+pub fn disableEventCode(self: *Device, code: Event.Code) !void {
+    return self.raw.disableEventCode(code);
 }
 
-pub fn createVirtualDevice(self: *const Device) !VirtualDevice {
-    var uidev: ?*c.libevdev_uinput = undefined;
-    const rc = c.libevdev_uinput_create_from_device(self.dev, c.LIBEVDEV_UINPUT_OPEN_MANAGED, &uidev);
-    if (rc < 0) {
-        log.warn(
-            "failed to create an uinput device: {s} (event device: {s})",
-            .{ c.strerror(-rc), self.getName() },
-        );
-        return error.InitLibEvdevUInputFailed;
-    }
-    return VirtualDevice{ .uidev = uidev };
+pub fn createVirtualDevice(self: Device) !VirtualDevice {
+    return .{ .raw = try raw.UInputDevice.createFromDevice(self.raw) };
 }
 
 pub const VirtualDevice = struct {
-    uidev: ?*c.libevdev_uinput,
+    raw: raw.UInputDevice,
 
     pub fn destroy(self: VirtualDevice) void {
-        c.libevdev_uinput_destroy(self.uidev);
+        return self.raw.destroy();
     }
 
     pub fn writeEvent(self: VirtualDevice, code: Event.Code, value: c_int) !void {
-        const rc = c.libevdev_uinput_write_event(
-            self.uidev,
-            code.getType().intoInt(),
-            code.intoInt(),
-            value,
-        );
-        if (rc < 0) {
-            log.warn("failed to write {s} {s}: {s} (devnode: {s})", .{
-                code.getType().getName(),
-                code.getName() orelse "?",
-                c.strerror(-rc),
-                self.getDevNode(),
-            });
-            return error.WriteEventFailed;
-        }
+        return self.raw.writeEvent(code, value);
     }
 
     pub fn getFd(self: VirtualDevice) c_int {
-        return c.libevdev_uinput_get_fd(self.uidev);
+        return self.raw.getFd();
     }
 
     pub fn getSysPath(self: VirtualDevice) []const u8 {
-        return std.mem.span(c.libevdev_uinput_get_syspath(self.uidev));
+        return self.raw.getSysPath();
     }
 
     pub fn getDevNode(self: VirtualDevice) []const u8 {
-        return std.mem.span(c.libevdev_uinput_get_devnode(self.uidev));
+        return self.raw.getDevNode();
     }
 };
