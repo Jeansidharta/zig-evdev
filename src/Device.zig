@@ -3,7 +3,10 @@ const log = std.log.scoped(.evdev);
 const Allocator = std.mem.Allocator;
 const ArrayList = std.ArrayList;
 
-const Event = @import("Event");
+const module = @import("root.zig");
+const Event = module.Event;
+const Property = module.Property;
+
 const raw = @import("raw.zig");
 
 const Device = @This();
@@ -11,28 +14,15 @@ const Device = @This();
 raw: raw.Device,
 allocator: Allocator,
 
-pub fn new(allocator: Allocator, name: [*c]const u8) Device {
-    var dev = raw.Device.new();
-    dev.setName(name);
+pub fn open(allocator: Allocator, path: []const u8) raw.Device.OpenError!Device {
     return Device{
-        .raw = dev,
-        .allocator = allocator,
-    };
-}
-
-pub fn open(allocator: Allocator, path: []const u8) !Device {
-    const fd = try std.posix.open(path, .{}, 0o444);
-    var dev = raw.Device.new();
-    try dev.setFd(fd);
-    return Device{
-        .raw = dev,
+        .raw = try raw.Device.open(path, .{}),
         .allocator = allocator,
     };
 }
 
 pub fn free(self: Device) void {
-    defer self.raw.free();
-    if (self.getFd()) |fd| std.posix.close(fd);
+    self.raw.free();
 }
 
 // https://source.android.com/docs/core/interaction/input/touch-devices#touch-device-classification
@@ -184,48 +174,9 @@ pub fn ungrab(self: Device) !void {
     return self.raw.ungrab();
 }
 
-pub fn copyCapabilities(self: *Device, src: Device, force: bool) !void {
-    inline for (0..@typeInfo(Property).Enum.fields.len) |prop_u| {
-        const prop: Property = @enumFromInt(prop_u);
-        if (src.hasProperty(prop)) {
-            self.enableProperty(prop) catch |e| if (force) return e;
-        }
-    }
-    inline for (@typeInfo(Event.Type).Enum.fields) |field| {
-        self.copyEventCapabilities(
-            src,
-            @field(Event.Type, field.name),
-            force,
-        ) catch |e| if (force) return e;
-    }
+pub fn getPath(self: Device, buf: []u8) raw.Device.GetPathError![]const u8 {
+    return self.raw.getPath(buf);
 }
-
-fn copyEventCapabilities(
-    self: *Device,
-    src: Device,
-    comptime typ: Event.Type,
-    force: bool,
-) !void {
-    if (!src.hasEventType(typ)) return;
-    self.enableEventType(typ) catch |e| if (force) return e;
-
-    @setEvalBranchQuota(2000);
-    const CodeType = typ.CodeType();
-    inline for (@typeInfo(CodeType).Enum.fields) |field| {
-        const codeField = @field(CodeType, field.name); // Event.Code.{KEY,SYN,..}.XXX
-        const code = codeField.intoCode(); // Event.Code
-
-        if (src.hasEventCode(code)) {
-            const data = switch (typ) {
-                .ABS => src.getAbsInfo(codeField),
-                else => null,
-            };
-            self.enableEventCode(code, data) catch |e| if (force) return e;
-        }
-    }
-}
-
-pub const Property = raw.Property;
 
 pub fn getFd(self: Device) ?c_int {
     return self.raw.getFd();
@@ -247,62 +198,14 @@ pub fn hasEventCode(self: Device, code: Event.Code) bool {
     return self.raw.hasEventCode(code);
 }
 
-fn getAbsInfo(self: Device, axis: Event.Code.ABS) raw.AbsInfo {
+pub fn getAbsInfo(self: Device, axis: Event.Code.ABS) [*c]const raw.AbsInfo {
     return self.raw.getAbsInfo(axis);
 }
 
-fn getNumSlots(self: Device) c_int {
+pub fn getNumSlots(self: Device) c_int {
     return self.raw.getNumSlots();
 }
 
-pub fn enableProperty(self: *Device, prop: Property) !void {
-    return self.raw.enableProperty(prop);
+pub fn getRepeat(self: Device, repeat: Event.Code.REP) ?c_int {
+    return self.raw.getRepeat(repeat);
 }
-
-pub fn disableProperty(self: *Device, prop: Property) !void {
-    return self.raw.disableProperty(prop);
-}
-
-pub fn enableEventType(self: *Device, typ: Event.Type) !void {
-    return self.raw.enableEventType(typ);
-}
-
-pub fn disableEventType(self: *Device, typ: Event.Type) !void {
-    return self.raw.disableEventType(typ);
-}
-
-pub fn enableEventCode(self: *Device, code: Event.Code, data: ?*const anyopaque) !void {
-    return self.raw.enableEventCode(code, data);
-}
-
-pub fn disableEventCode(self: *Device, code: Event.Code) !void {
-    return self.raw.disableEventCode(code);
-}
-
-pub fn createVirtualDevice(self: Device) !VirtualDevice {
-    return .{ .raw = try raw.UInputDevice.createFromDevice(self.raw) };
-}
-
-pub const VirtualDevice = struct {
-    raw: raw.UInputDevice,
-
-    pub fn destroy(self: VirtualDevice) void {
-        return self.raw.destroy();
-    }
-
-    pub fn writeEvent(self: VirtualDevice, code: Event.Code, value: c_int) !void {
-        return self.raw.writeEvent(code, value);
-    }
-
-    pub fn getFd(self: VirtualDevice) c_int {
-        return self.raw.getFd();
-    }
-
-    pub fn getSysPath(self: VirtualDevice) []const u8 {
-        return self.raw.getSysPath();
-    }
-
-    pub fn getDevNode(self: VirtualDevice) []const u8 {
-        return self.raw.getDevNode();
-    }
-};

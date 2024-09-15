@@ -19,10 +19,10 @@ pub fn main() !void {
     defer keyboard.free();
     std.debug.assert(keyboard.isKeyboard());
 
-    var outdevice = evdev.Device.new(gpa, "ctrl2cap");
-    defer outdevice.free();
-    try outdevice.copyCapabilities(keyboard, false);
-    var writer = try outdevice.createVirtualDevice();
+    var builder = evdev.VirtualDevice.Builder.new();
+    builder.setName("ctrl2cap");
+    try builder.copyCapabilities(keyboard);
+    var writer = try builder.build();
     defer writer.destroy();
 
     try keyboard.grab();

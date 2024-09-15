@@ -6,12 +6,15 @@ const c = @cImport({
     @cInclude("libevdev/libevdev-uinput.h");
 });
 
+const builtin = @import("builtin");
 const std = @import("std");
+const assert = std.debug.assert;
 const log = std.log.scoped(.evdev);
+const testing = std.testing;
 
 const Event = @import("Event");
 
-pub const AbsInfo = [*c]const c.input_absinfo;
+pub const AbsInfo = c.input_absinfo;
 
 pub const Property = enum(c_uint) {
     pointer = c.INPUT_PROP_POINTER,
@@ -28,12 +31,21 @@ pub const Device = struct {
 
     // Initialization and setup
 
+    pub const OpenError = std.posix.OpenError || SetFdError;
+
+    pub fn open(path: []const u8, flags: std.posix.O) OpenError!Device {
+        var dev = Device.new();
+        try dev.setFd(try std.posix.open(path, flags, 0o444));
+        return dev;
+    }
+
     pub inline fn new() Device {
         return .{ .dev = c.libevdev_new() };
     }
 
-    pub inline fn free(self: Device) void {
-        c.libevdev_free(self.dev);
+    pub fn free(self: Device) void {
+        defer c.libevdev_free(self.dev);
+        if (self.getFd()) |fd| std.posix.close(fd);
     }
 
     pub fn grab(self: Device) error{GrabFailed}!void {
@@ -52,7 +64,9 @@ pub const Device = struct {
         }
     }
 
-    pub fn setFd(self: *Device, fd: c_int) error{SetFdFailed}!void {
+    pub const SetFdError = error{SetFdFailed};
+
+    pub fn setFd(self: *Device, fd: c_int) SetFdError!void {
         if (c.libevdev_set_fd(self.dev, fd) < 0) return error.SetFdFailed;
     }
 
@@ -66,6 +80,21 @@ pub const Device = struct {
     }
 
     // Querying device capabilities
+
+    pub const GetPathError = std.fmt.BufPrintError || std.posix.ReadLinkError;
+
+    pub fn getPath(self: Device, buf: []u8) GetPathError![]const u8 {
+        var path_buf: [32]u8 = undefined;
+        const path = try std.fmt.bufPrint(&path_buf, "/proc/self/fd/{}", .{self.getFd().?});
+        return try std.posix.readlink(path, buf);
+    }
+
+    test "getPath" {
+        const dev = try Device.open("/dev/input/event0", .{});
+        defer dev.free();
+        var buf: [32]u8 = undefined;
+        try testing.expectEqualStrings(try dev.getPath(&buf), "/dev/input/event0");
+    }
 
     pub inline fn getName(self: Device) []const u8 {
         return std.mem.span(c.libevdev_get_name(self.dev));
@@ -83,8 +112,19 @@ pub const Device = struct {
         return c.libevdev_has_event_code(self.dev, code.getType().intoInt(), code.intoInt()) == 1;
     }
 
-    pub inline fn getAbsInfo(self: Device, axis: Event.Code.ABS) AbsInfo {
+    pub inline fn getAbsInfo(self: Device, axis: Event.Code.ABS) [*c]const AbsInfo {
         return c.libevdev_get_abs_info(self.dev, axis.intoInt());
+    }
+
+    pub fn getRepeat(self: Device, repeat: Event.Code.REP) ?c_int {
+        var val: c_int = 0;
+        return if (switch (repeat) {
+            .REP_DELAY => c.libevdev_get_repeat(self.dev, &val, null),
+            .REP_PERIOD => c.libevdev_get_repeat(self.dev, null, &val),
+        } == 0)
+            val
+        else
+            null;
     }
 
     // Multi-touch related functions
@@ -95,8 +135,8 @@ pub const Device = struct {
 
     // Modifying the appearance or capabilities of the device
 
-    pub inline fn setName(self: *Device, name: [*c]const u8) void {
-        c.libevdev_set_name(self.dev, name);
+    pub inline fn setName(self: *Device, name: []const u8) void {
+        c.libevdev_set_name(self.dev, &name[0]);
     }
 
     pub fn enableProperty(self: *Device, prop: Property) error{EnablePropertyFailed}!void {
@@ -147,8 +187,20 @@ pub const Device = struct {
         }
     }
 
-    pub fn enableEventCode(self: *Device, code: Event.Code, data: ?*const anyopaque) error{EnableEventCodeFailed}!void {
-        const rc = c.libevdev_enable_event_code(self.dev, code.getType().intoInt(), code.intoInt(), data);
+    pub const EventCodeData = union(enum) {
+        abs_info: [*c]const AbsInfo,
+        repeat: *const c_int,
+    };
+
+    pub fn enableEventCode(self: *Device, code: Event.Code, data: ?EventCodeData) error{EnableEventCodeFailed}!void {
+        const rc = c.libevdev_enable_event_code(
+            self.dev,
+            code.getType().intoInt(),
+            code.intoInt(),
+            if (data) |d| switch (d) {
+                inline else => |i| @as(*const anyopaque, i),
+            } else null,
+        );
         if (rc < 0) {
             log.warn("failed to enable {s} {s}: {s} (device: {s})", .{
                 code.getType().getName(),
