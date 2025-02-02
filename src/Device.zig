@@ -128,28 +128,28 @@ test removeInvalidEvents {
     const allocator = std.testing.allocator;
     // zig fmt: off
     const before: []const Event = &.{
-        Event.new(.{ .ABS = .ABS_X },        9),
-        Event.new(.{ .ABS = .ABS_Y },        8),
-        Event.new(.{ .SYN = .SYN_REPORT },   0),
+        .{ .code = .{ .ABS = .ABS_X },       .value = 9 },
+        .{ .code = .{ .ABS = .ABS_Y },       .value = 8 },
+        .{ .code = .{ .SYN = .SYN_REPORT },  .value = 0 },
         // ---
-        Event.new(.{ .ABS = .ABS_X },       10),
-        Event.new(.{ .ABS = .ABS_Y },       10),
-        Event.new(.{ .SYN = .SYN_DROPPED },  0),
-        Event.new(.{ .ABS = .ABS_Y },       15),
-        Event.new(.{ .SYN = .SYN_REPORT },   0),
+        .{ .code = .{ .ABS = .ABS_X },       .value = 10 },
+        .{ .code = .{ .ABS = .ABS_Y },       .value = 10 },
+        .{ .code = .{ .SYN = .SYN_DROPPED }, .value = 0 },
+        .{ .code = .{ .ABS = .ABS_Y },       .value = 15 },
+        .{ .code = .{ .SYN = .SYN_REPORT },  .value = 0 },
         // ---
-        Event.new(.{ .ABS = .ABS_X },       11),
-        Event.new(.{ .KEY = .BTN_TOUCH },    0),
-        Event.new(.{ .SYN = .SYN_REPORT },   0),
+        .{ .code = .{ .ABS = .ABS_X },       .value = 11 },
+        .{ .code = .{ .KEY = .BTN_TOUCH },   .value = 0 },
+        .{ .code = .{ .SYN = .SYN_REPORT },  .value = 0 },
     };
     const after: []const Event = &.{
-        Event.new(.{ .ABS = .ABS_X },        9),
-        Event.new(.{ .ABS = .ABS_Y },        8),
-        Event.new(.{ .SYN = .SYN_REPORT },   0),
+        .{ .code = .{ .ABS = .ABS_X },       .value = 9 },
+        .{ .code = .{ .ABS = .ABS_Y },       .value = 8 },
+        .{ .code = .{ .SYN = .SYN_REPORT },  .value = 0 },
         // ---
-        Event.new(.{ .ABS = .ABS_X },       11),
-        Event.new(.{ .KEY = .BTN_TOUCH },    0),
-        Event.new(.{ .SYN = .SYN_REPORT },   0),
+        .{ .code = .{ .ABS = .ABS_X },       .value = 11 },
+        .{ .code = .{ .KEY = .BTN_TOUCH },   .value = 0 },
+        .{ .code = .{ .SYN = .SYN_REPORT },  .value = 0 },
     };
     // zig fmt: on
     var events = ArrayList(Event).init(allocator);

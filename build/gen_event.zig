@@ -20,25 +20,7 @@ pub fn main() !void {
     _ = w.write(
         \\code: Code,
         \\value: c_int,
-        \\time: @import("std").posix.timeval,
-        \\
-        \\pub fn new(code: Code, value: c_int) @This() {
-        \\    const Instant = @import("std").time.Instant;
-        \\    const zero = Instant{ .timestamp = .{
-        \\        .tv_sec = 0,
-        \\        .tv_nsec = 0,
-        \\    } };
-        \\    const now = if (!@import("builtin").is_test) Instant.now() catch zero else zero;
-        \\    return .{
-        \\        .code = code,
-        \\        .value = value,
-        \\        .time = .{
-        \\            .tv_sec = now.timestamp.tv_sec,
-        \\            .tv_usec = @divTrunc(now.timestamp.tv_nsec, 1000),
-        \\        },
-        \\    };
-        \\}
-        \\
+        \\time: @import("std").posix.timeval = undefined,
         \\
     ) catch {};
 
