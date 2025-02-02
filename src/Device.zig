@@ -12,12 +12,10 @@ const raw = @import("raw.zig");
 const Device = @This();
 
 raw: raw.Device,
-allocator: Allocator,
 
-pub fn open(allocator: Allocator, path: []const u8) raw.Device.OpenError!Device {
+pub fn open(path: []const u8) raw.Device.OpenError!Device {
     return Device{
         .raw = try raw.Device.open(path, .{}),
-        .allocator = allocator,
     };
 }
 
@@ -71,15 +69,14 @@ pub fn isKeyboard(self: Device) bool {
     return true;
 }
 
-pub fn readEvents(self: Device) !?[]const Event {
-    var events = ArrayList(Event).init(self.allocator);
-    defer events.deinit();
+pub fn readEvents(self: Device, dest: *ArrayList(Event)) !usize {
+    const dest_len = dest.items.len;
 
-    var ev: Event = undefined;
+    var ev: Event = try self.nextEvent(ReadFlags.NORMAL) orelse return 0;
     // read events until SYN_REPORT event is received
     while (true) {
-        ev = try self.nextEvent(ReadFlags.NORMAL) orelse return null;
-        try events.append(ev);
+        ev = (try self.nextEvent(ReadFlags.NORMAL)).?;
+        try dest.append(ev);
         const syn = switch (ev.code) {
             .SYN => |e| e,
             else => continue,
@@ -90,57 +87,47 @@ pub fn readEvents(self: Device) !?[]const Event {
         while (true) {
             log.info("handling dropped events...", .{});
             if (try self.nextEvent(ReadFlags.SYNC)) |ev2|
-                try events.append(ev2)
+                try dest.append(ev2)
             else
                 break;
         }
     }
 
-    return try removeInvalidEvents(self.allocator, events.items);
+    removeInvalidEvents(dest, dest_len);
+    return dest.items.len - dest_len;
 }
 
-fn removeInvalidEvents(allocator: Allocator, events: []const Event) Allocator.Error![]const Event {
-    var result = ArrayList(Event).init(allocator);
-    defer result.deinit();
-
+fn removeInvalidEvents(events: *ArrayList(Event), start_index: usize) void {
     var dropped = false;
-    var start_idx: usize = 0;
+    var start_idx = start_index;
 
-    for (events, 0..) |ev, idx| {
-        const syn = switch (ev.code) {
+    var idx = start_index;
+    while (idx < events.items.len) : (idx += 1) {
+        const syn = switch (events.items[idx].code) {
             .SYN => |e| e,
             else => continue,
         };
         switch (syn) {
-            .SYN_DROPPED => dropped = true,
+            .SYN_DROPPED => {
+                dropped = true;
+            },
             .SYN_REPORT => if (dropped) {
                 dropped = false;
-                start_idx = idx + 1;
+                events.replaceRangeAssumeCapacity(start_idx, idx + 1 - start_idx, &.{});
+                idx = start_idx - 1;
             } else {
-                try result.appendSlice(events[start_idx .. idx + 1]);
-                start_idx = idx;
+                start_idx = idx + 1;
             },
             .SYN_CONFIG => unreachable, // currently not used
             .SYN_MT_REPORT => unreachable, // used for MT protocol type A
         }
     }
-
-    return try result.toOwnedSlice();
 }
 
-test "removeInvalidEvents" {
+test removeInvalidEvents {
     const allocator = std.testing.allocator;
     // zig fmt: off
-    const expected: []const Event = &.{
-        Event.new(.{ .ABS = .ABS_X },        9),
-        Event.new(.{ .ABS = .ABS_Y },        8),
-        Event.new(.{ .SYN = .SYN_REPORT },   0),
-        // ---
-        Event.new(.{ .ABS = .ABS_X },       11),
-        Event.new(.{ .KEY = .BTN_TOUCH },    0),
-        Event.new(.{ .SYN = .SYN_REPORT },   0),
-    };
-    const actual = try removeInvalidEvents(allocator, &.{
+    const before: []const Event = &.{
         Event.new(.{ .ABS = .ABS_X },        9),
         Event.new(.{ .ABS = .ABS_Y },        8),
         Event.new(.{ .SYN = .SYN_REPORT },   0),
@@ -154,10 +141,22 @@ test "removeInvalidEvents" {
         Event.new(.{ .ABS = .ABS_X },       11),
         Event.new(.{ .KEY = .BTN_TOUCH },    0),
         Event.new(.{ .SYN = .SYN_REPORT },   0),
-    });
+    };
+    const after: []const Event = &.{
+        Event.new(.{ .ABS = .ABS_X },        9),
+        Event.new(.{ .ABS = .ABS_Y },        8),
+        Event.new(.{ .SYN = .SYN_REPORT },   0),
+        // ---
+        Event.new(.{ .ABS = .ABS_X },       11),
+        Event.new(.{ .KEY = .BTN_TOUCH },    0),
+        Event.new(.{ .SYN = .SYN_REPORT },   0),
+    };
     // zig fmt: on
-    defer allocator.free(actual);
-    try std.testing.expectEqualDeep(expected, actual);
+    var events = ArrayList(Event).init(allocator);
+    defer events.deinit();
+    try events.appendSlice(before);
+    removeInvalidEvents(&events, 0);
+    try std.testing.expectEqualSlices(Event, after, events.items);
 }
 
 const ReadFlags = raw.Device.ReadFlags;

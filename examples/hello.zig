@@ -2,7 +2,7 @@ const std = @import("std");
 const evdev = @import("evdev");
 
 pub fn main() !void {
-    const dev = try evdev.Device.open(std.heap.page_allocator, "/dev/input/event3");
+    const dev = try evdev.Device.open("/dev/input/event3");
     defer dev.free();
     std.debug.print("name: {s}\n", .{dev.getName()});
     var buf: [32]u8 = undefined;

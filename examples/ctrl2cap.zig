@@ -9,13 +9,12 @@ pub const std_options: std.Options = .{
 };
 
 pub fn main() !void {
-    var gpa_state = std.heap.GeneralPurposeAllocator(.{}){};
-    const gpa = gpa_state.allocator();
-    defer _ = gpa_state.deinit();
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    defer std.debug.assert(gpa.deinit() == .ok);
 
     var args = std.process.args();
-    _ = args.next();
-    var keyboard = try evdev.Device.open(gpa, args.next().?);
+    _ = args.skip();
+    var keyboard = try evdev.Device.open(args.next().?);
     defer keyboard.free();
     std.debug.assert(keyboard.isKeyboard());
 
@@ -28,10 +27,12 @@ pub fn main() !void {
     try keyboard.grab();
     defer keyboard.ungrab() catch {};
 
+    var event_buf = std.ArrayList(evdev.Event).init(gpa.allocator());
+    defer event_buf.deinit();
     main: while (true) {
-        const events = try keyboard.readEvents() orelse continue;
-        defer gpa.free(events);
-        for (events) |event| {
+        if (try keyboard.readEvents(&event_buf) == 0) continue;
+        defer event_buf.clearRetainingCapacity();
+        for (event_buf.items) |event| {
             std.debug.print("{}\n", .{event});
             var out = event;
             switch (out.code) {
