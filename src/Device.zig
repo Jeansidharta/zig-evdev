@@ -13,14 +13,23 @@ const Device = @This();
 
 raw: raw.Device,
 
-pub fn open(path: []const u8) raw.Device.OpenError!Device {
+pub fn open(path: []const u8, flags: std.posix.O) !Device {
+    return try Device.fromFd(try std.posix.open(path, flags, 0o444));
+}
+
+pub fn fromFd(fd: c_int) !Device {
     return Device{
-        .raw = try raw.Device.open(path, .{}),
+        .raw = try raw.Device.fromFd(fd),
     };
 }
 
 pub fn free(self: Device) void {
     self.raw.free();
+}
+
+pub fn closeAndFree(self: Device) void {
+    std.posix.close(self.getFd());
+    self.free();
 }
 
 // https://source.android.com/docs/core/interaction/input/touch-devices#touch-device-classification
@@ -173,12 +182,8 @@ pub fn ungrab(self: Device) !void {
     return self.raw.ungrab();
 }
 
-pub fn getPath(self: Device, buf: []u8) raw.Device.GetPathError![]const u8 {
-    return self.raw.getPath(buf);
-}
-
-pub fn getFd(self: Device) ?c_int {
-    return self.raw.getFd();
+pub fn getFd(self: Device) c_int {
+    return self.raw.getFd().?;
 }
 
 pub fn getName(self: Device) []const u8 {

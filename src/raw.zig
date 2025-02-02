@@ -31,21 +31,18 @@ pub const Device = struct {
 
     // Initialization and setup
 
-    pub const OpenError = std.posix.OpenError || SetFdError;
-
-    pub fn open(path: []const u8, flags: std.posix.O) OpenError!Device {
-        var dev = Device.new();
-        try dev.setFd(try std.posix.open(path, flags, 0o444));
-        return dev;
-    }
-
     pub inline fn new() Device {
         return .{ .dev = c.libevdev_new() };
     }
 
+    pub fn fromFd(fd: c_int) SetFdError!Device {
+        var dev: ?*c.libevdev = undefined;
+        if (c.libevdev_new_from_fd(fd, &dev) < 0) return SetFdError.SetFdFailed;
+        return .{ .dev = dev };
+    }
+
     pub fn free(self: Device) void {
-        defer c.libevdev_free(self.dev);
-        if (self.getFd()) |fd| std.posix.close(fd);
+        c.libevdev_free(self.dev);
     }
 
     pub fn grab(self: Device) error{GrabFailed}!void {
@@ -80,21 +77,6 @@ pub const Device = struct {
     }
 
     // Querying device capabilities
-
-    pub const GetPathError = std.fmt.BufPrintError || std.posix.ReadLinkError;
-
-    pub fn getPath(self: Device, buf: []u8) GetPathError![]const u8 {
-        var path_buf: [32]u8 = undefined;
-        const path = try std.fmt.bufPrint(&path_buf, "/proc/self/fd/{}", .{self.getFd().?});
-        return try std.posix.readlink(path, buf);
-    }
-
-    test "getPath" {
-        const dev = try Device.open("/dev/input/event0", .{});
-        defer dev.free();
-        var buf: [32]u8 = undefined;
-        try testing.expectEqualStrings(try dev.getPath(&buf), "/dev/input/event0");
-    }
 
     pub inline fn getName(self: Device) []const u8 {
         return std.mem.span(c.libevdev_get_name(self.dev));

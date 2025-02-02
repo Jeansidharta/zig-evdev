@@ -11,6 +11,10 @@ const VirtualDevice = @This();
 
 raw: raw.UInputDevice,
 
+pub fn fromDevice(dev: Device) !VirtualDevice {
+    return .{ .raw = try raw.UInputDevice.createFromDevice(dev.raw) };
+}
+
 pub fn destroy(self: VirtualDevice) void {
     return self.raw.destroy();
 }
@@ -36,13 +40,6 @@ pub const Builder = struct {
 
     pub fn new() Builder {
         return Builder{ .raw = raw.Device.new() };
-    }
-
-    const FromDeviceError = raw.Device.GetPathError || raw.Device.OpenError;
-
-    pub fn fromDevice(dev: Device) FromDeviceError!Builder {
-        var buf: [32]u8 = undefined;
-        return Builder{ .raw = try raw.Device.open(try dev.getPath(&buf), .{}) };
     }
 
     pub fn build(self: Builder) !VirtualDevice {

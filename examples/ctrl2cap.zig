@@ -14,8 +14,8 @@ pub fn main() !void {
 
     var args = std.process.args();
     _ = args.skip();
-    var keyboard = try evdev.Device.open(args.next().?);
-    defer keyboard.free();
+    var keyboard = try evdev.Device.open(args.next().?, .{});
+    defer keyboard.closeAndFree();
     std.debug.assert(keyboard.isKeyboard());
 
     var builder = evdev.VirtualDevice.Builder.new();
