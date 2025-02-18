@@ -5,14 +5,14 @@ const Device = module.Device;
 const Event = module.Event;
 const Property = module.Property;
 
-const rawnModule = @import("raw.zig");
+const rawModule = @import("raw.zig");
 
 const VirtualDevice = @This();
 
-raw: rawnModule.UInputDevice,
+raw: rawModule.UInputDevice,
 
 pub fn fromDevice(dev: Device) !VirtualDevice {
-    return .{ .raw = try rawnModule.UInputDevice.createFromDevice(dev.raw) };
+    return .{ .raw = try rawModule.UInputDevice.createFromDevice(dev.raw) };
 }
 
 pub fn destroy(self: VirtualDevice) void {
@@ -36,15 +36,15 @@ pub fn getDevNode(self: VirtualDevice) []const u8 {
 }
 
 pub const Builder = struct {
-    raw: rawnModule.Device,
+    raw: rawModule.Device,
 
     pub fn new() Builder {
-        return Builder{ .raw = rawnModule.Device.new() };
+        return Builder{ .raw = rawModule.Device.new() };
     }
 
     pub fn build(self: Builder) !VirtualDevice {
         defer self.raw.free();
-        return .{ .raw = try rawnModule.UInputDevice.createFromDevice(self.raw) };
+        return .{ .raw = try rawModule.UInputDevice.createFromDevice(self.raw) };
     }
 
     pub fn setName(self: *Builder, name: []const u8) void {
@@ -67,7 +67,7 @@ pub const Builder = struct {
         return self.raw.disableEventType(typ);
     }
 
-    pub fn enableEventCode(self: *Builder, code: Event.Code, data: ?rawnModule.Device.EventCodeData) !void {
+    pub fn enableEventCode(self: *Builder, code: Event.Code, data: ?rawModule.Device.EventCodeData) !void {
         return self.raw.enableEventCode(code, data);
     }
 
@@ -100,8 +100,8 @@ pub const Builder = struct {
             const code = codeField.intoCode(); // Event.Code
 
             if (src.hasEventCode(code)) try self.enableEventCode(code, switch (typ) {
-                .ABS => .{ .abs_info = src.getAbsInfo(codeField) },
-                .REP => .{ .repeat = &src.getRepeat(codeField).? },
+                .abs => .{ .abs_info = src.getAbsInfo(codeField) },
+                .rep => .{ .repeat = &src.getRepeat(codeField).? },
                 else => null,
             });
         }
