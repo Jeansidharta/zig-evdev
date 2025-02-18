@@ -13,6 +13,12 @@ const Device = @This();
 
 raw: rawModule.Device,
 
+pub fn new() !Device {
+    return Device{
+        .raw = rawModule.Device.new(),
+    };
+}
+
 pub fn open(path: []const u8, flags: std.posix.O) !Device {
     return try Device.fromFd(try std.posix.open(path, flags, 0o444));
 }
