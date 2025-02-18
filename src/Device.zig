@@ -7,11 +7,11 @@ const module = @import("root.zig");
 const Event = module.Event;
 const Property = module.Property;
 
-const raw = @import("raw.zig");
+const rawModule = @import("raw.zig");
 
 const Device = @This();
 
-raw: raw.Device,
+raw: rawModule.Device,
 
 pub fn open(path: []const u8, flags: std.posix.O) !Device {
     return try Device.fromFd(try std.posix.open(path, flags, 0o444));
@@ -19,7 +19,7 @@ pub fn open(path: []const u8, flags: std.posix.O) !Device {
 
 pub fn fromFd(fd: c_int) !Device {
     return Device{
-        .raw = try raw.Device.fromFd(fd),
+        .raw = try rawModule.Device.fromFd(fd),
     };
 }
 
@@ -56,13 +56,13 @@ pub fn isSingleTouch(self: Device) bool {
 
 pub fn isGamepad(self: Device) bool {
     return self.hasEventCode(
-        .{ .KEY = Event.Code.KEY.BTN_GAMEPAD },
+        .{ .KEY = Event.Code.KEYCODE.BTN_GAMEPAD },
     );
 }
 
 pub fn isMouse(self: Device) bool {
     inline for ([_]Event.Code{
-        .{ .KEY = Event.Code.KEY.BTN_MOUSE },
+        .{ .KEY = Event.Code.KEYCODE.BTN_MOUSE },
         .{ .REL = .REL_X },
         .{ .REL = .REL_Y },
     }) |code| if (!self.hasEventCode(code)) return false;
@@ -168,7 +168,7 @@ test removeInvalidEvents {
     try std.testing.expectEqualSlices(Event, after, events.items);
 }
 
-const ReadFlags = raw.Device.ReadFlags;
+const ReadFlags = rawModule.Device.ReadFlags;
 
 fn nextEvent(self: Device, flags: c_uint) !?Event {
     return self.raw.nextEvent(flags);
@@ -202,7 +202,7 @@ pub fn hasEventCode(self: Device, code: Event.Code) bool {
     return self.raw.hasEventCode(code);
 }
 
-pub fn getAbsInfo(self: Device, axis: Event.Code.ABS) [*c]const raw.AbsInfo {
+pub fn getAbsInfo(self: Device, axis: Event.Code.ABSCODE) [*c]const rawModule.AbsInfo {
     return self.raw.getAbsInfo(axis);
 }
 
@@ -210,6 +210,6 @@ pub fn getNumSlots(self: Device) c_int {
     return self.raw.getNumSlots();
 }
 
-pub fn getRepeat(self: Device, repeat: Event.Code.REP) ?c_int {
+pub fn getRepeat(self: Device, repeat: Event.Code.REPCODE) ?c_int {
     return self.raw.getRepeat(repeat);
 }

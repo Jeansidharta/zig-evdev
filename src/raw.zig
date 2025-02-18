@@ -94,11 +94,11 @@ pub const Device = struct {
         return c.libevdev_has_event_code(self.dev, code.getType().intoInt(), code.intoInt()) == 1;
     }
 
-    pub inline fn getAbsInfo(self: Device, axis: Event.Code.ABS) [*c]const AbsInfo {
+    pub inline fn getAbsInfo(self: Device, axis: Event.Code.ABSCODE) [*c]const AbsInfo {
         return c.libevdev_get_abs_info(self.dev, axis.intoInt());
     }
 
-    pub fn getRepeat(self: Device, repeat: Event.Code.REP) ?c_int {
+    pub fn getRepeat(self: Device, repeat: Event.Code.REPCODE) ?c_int {
         var val: c_int = 0;
         return if (switch (repeat) {
             .REP_DELAY => c.libevdev_get_repeat(self.dev, &val, null),
@@ -221,9 +221,18 @@ pub const Device = struct {
         const rc = c.libevdev_next_event(self.dev, flags, &ev);
         switch (rc) {
             c.LIBEVDEV_READ_STATUS_SUCCESS, c.LIBEVDEV_READ_STATUS_SYNC => {
+                const timeval = std.posix.timeval;
+
+                const time: timeval = if (@hasField(timeval, "sec") and @hasField(timeval, "usec"))
+                    .{ .sec = ev.time.tv_sec, .usec = ev.time.tv_usec }
+                else if (@hasField(timeval, "tv_sec") and @hasField(timeval, "tv_usec"))
+                    .{ .sec = ev.time.tv_sec, .usec = ev.time.tv_usec }
+                else
+                    @compileError("System architecture has unknown shape for std.posix.timeval");
+
                 const e = Event{
                     .code = Event.Code.new(Event.Type.new(ev.type), ev.code),
-                    .time = .{ .tv_sec = ev.time.tv_sec, .tv_usec = ev.time.tv_usec },
+                    .time = time,
                     .value = ev.value,
                 };
                 log.debug("event received: {s} {s}: {} (device: {s})", .{

@@ -14,8 +14,8 @@ test "Type.getName" {
 }
 
 test "Type.CodeType" {
-    try t.expectEqual(Event.Type.KEY.CodeType(), Event.Code.KEY);
-    try t.expectEqual(Event.Type.MSC.CodeType(), Event.Code.MSC);
+    try t.expectEqual(Event.Type.KEY.CodeType(), Event.Code.KEYCODE);
+    try t.expectEqual(Event.Type.MSC.CodeType(), Event.Code.MSCCODE);
 }
 
 test "Code.getName" {
@@ -24,7 +24,7 @@ test "Code.getName" {
     c = .{ .SYN = .SYN_REPORT };
     try t.expectEqualStrings(c.getName().?, "SYN_REPORT");
 
-    c = Event.Code.PWR.new(0).intoCode();
+    c = Event.Code.PWRCODE.new(0).intoCode();
     try t.expectEqual(c.getName(), null);
 }
 
@@ -34,6 +34,6 @@ test "Code.getType" {
 }
 
 test "Code.XXX.intoCode" {
-    try t.expectEqual(Event.Code.KEY.KEY_1.intoCode(), Event.Code{ .KEY = .KEY_1 });
-    try t.expectEqual(Event.Code.PWR.new(0).intoCode(), Event.Code.new(.PWR, 0));
+    try t.expectEqual(Event.Code.KEYCODE.KEY_1.intoCode(), Event.Code{ .KEY = .KEY_1 });
+    try t.expectEqual(Event.Code.PWRCODE.new(0).intoCode(), Event.Code.new(.PWR, 0));
 }

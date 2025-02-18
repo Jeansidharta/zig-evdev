@@ -5,14 +5,14 @@ const Device = module.Device;
 const Event = module.Event;
 const Property = module.Property;
 
-const raw = @import("raw.zig");
+const rawnModule = @import("raw.zig");
 
 const VirtualDevice = @This();
 
-raw: raw.UInputDevice,
+raw: rawnModule.UInputDevice,
 
 pub fn fromDevice(dev: Device) !VirtualDevice {
-    return .{ .raw = try raw.UInputDevice.createFromDevice(dev.raw) };
+    return .{ .raw = try rawnModule.UInputDevice.createFromDevice(dev.raw) };
 }
 
 pub fn destroy(self: VirtualDevice) void {
@@ -36,15 +36,15 @@ pub fn getDevNode(self: VirtualDevice) []const u8 {
 }
 
 pub const Builder = struct {
-    raw: raw.Device,
+    raw: rawnModule.Device,
 
     pub fn new() Builder {
-        return Builder{ .raw = raw.Device.new() };
+        return Builder{ .raw = rawnModule.Device.new() };
     }
 
     pub fn build(self: Builder) !VirtualDevice {
         defer self.raw.free();
-        return .{ .raw = try raw.UInputDevice.createFromDevice(self.raw) };
+        return .{ .raw = try rawnModule.UInputDevice.createFromDevice(self.raw) };
     }
 
     pub fn setName(self: *Builder, name: []const u8) void {
@@ -67,7 +67,7 @@ pub const Builder = struct {
         return self.raw.disableEventType(typ);
     }
 
-    pub fn enableEventCode(self: *Builder, code: Event.Code, data: ?raw.Device.EventCodeData) !void {
+    pub fn enableEventCode(self: *Builder, code: Event.Code, data: ?rawnModule.Device.EventCodeData) !void {
         return self.raw.enableEventCode(code, data);
     }
 
@@ -76,11 +76,11 @@ pub const Builder = struct {
     }
 
     pub fn copyCapabilities(self: *Builder, src: Device) !void {
-        inline for (0..@typeInfo(Property).Enum.fields.len) |prop_u| {
+        inline for (0..@typeInfo(Property).@"enum".fields.len) |prop_u| {
             const prop: Property = @enumFromInt(prop_u);
             if (src.hasProperty(prop)) try self.enableProperty(prop);
         }
-        inline for (@typeInfo(Event.Type).Enum.fields) |field| {
+        inline for (@typeInfo(Event.Type).@"enum".fields) |field| {
             try self.copyEventCapabilities(src, @field(Event.Type, field.name));
         }
     }
@@ -95,7 +95,7 @@ pub const Builder = struct {
 
         @setEvalBranchQuota(2000);
         const CodeType = typ.CodeType();
-        inline for (@typeInfo(CodeType).Enum.fields) |field| {
+        inline for (@typeInfo(CodeType).@"enum".fields) |field| {
             const codeField = @field(CodeType, field.name); // Event.Code.{KEY,SYN,..}.XXX
             const code = codeField.intoCode(); // Event.Code
 

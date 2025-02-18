@@ -3,12 +3,12 @@ const c = @cImport(@cInclude("libevdev/libevdev.h"));
 const std = @import("std");
 
 pub fn main() !void {
-    @setEvalBranchQuota(200000);
+    @setEvalBranchQuota(220000);
     const allocator = std.heap.page_allocator;
 
     const consts = comptime b: {
         var consts: []const []const u8 = &.{};
-        for (@typeInfo(c).Struct.decls) |decl|
+        for (@typeInfo(c).@"struct".decls) |decl|
             consts = consts ++ &[_][]const u8{decl.name};
         break :b consts;
     };
@@ -93,13 +93,13 @@ pub fn main() !void {
         ) catch {};
 
         for (types) |typ| w.print(
-            \\    {0s}: {0s},
+            \\    {0s}: {0s}CODE,
             \\
         , .{typ}) catch {};
 
         inline for (types) |typ| {
             w.print(
-                \\    pub const {s} = enum(c_ushort) {{
+                \\    pub const {s}CODE = enum(c_ushort) {{
                 \\
             , .{typ}) catch {};
             defer w.print(
@@ -113,7 +113,7 @@ pub fn main() !void {
                 \\            return Code{{ .{s} = self }};
                 \\        }}
                 \\        pub fn getName(self: @This()) ?[]const u8 {{
-                \\            if (comptime @typeInfo(@This()).Enum.fields.len == 0) return null;
+                \\            if (comptime @typeInfo(@This()).@"enum".fields.len == 0) return null;
                 \\            return switch (self) {{
                 \\                inline else => |c| @tagName(c),
                 \\            }};

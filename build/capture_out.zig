@@ -25,6 +25,7 @@ pub fn main() !void {
     var out = try std.fs.cwd().createFile(outpath, .{});
     defer out.close();
     try out.writeAll(res.stdout);
+    try std.io.getStdErr().writer().writeAll(res.stderr);
 
     std.process.exit(res.term.Exited);
 }
