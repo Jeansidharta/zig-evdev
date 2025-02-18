@@ -36,7 +36,7 @@ pub fn main() !void {
             std.debug.print("{}\n", .{event});
             var out = event;
             switch (out.code) {
-                .KEY => |*k| switch (k.*) {
+                .key => |*k| switch (k.*) {
                     .KEY_CAPSLOCK => k.* = .KEY_LEFTCTRL,
                     .KEY_LEFTCTRL => k.* = .KEY_CAPSLOCK,
                     .KEY_Q => break :main,

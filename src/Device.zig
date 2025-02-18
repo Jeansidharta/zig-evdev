@@ -38,42 +38,42 @@ pub fn closeAndFree(self: Device) void {
 
 pub fn isMultiTouch(self: Device) bool {
     inline for ([_]Event.Code{
-        .{ .KEY = .BTN_TOUCH },
-        .{ .ABS = .ABS_MT_POSITION_X },
-        .{ .ABS = .ABS_MT_POSITION_Y },
+        .{ .key = .BTN_TOUCH },
+        .{ .abs = .ABS_MT_POSITION_X },
+        .{ .abs = .ABS_MT_POSITION_Y },
     }) |code| if (!self.hasEventCode(code)) return false;
     return 1 < self.getNumSlots() and !self.isGamepad();
 }
 
 pub fn isSingleTouch(self: Device) bool {
     inline for ([_]Event.Code{
-        .{ .KEY = .BTN_TOUCH },
-        .{ .ABS = .ABS_X },
-        .{ .ABS = .ABS_Y },
+        .{ .key = .BTN_TOUCH },
+        .{ .abs = .ABS_X },
+        .{ .abs = .ABS_Y },
     }) |code| if (!self.hasEventCode(code)) return false;
     return !self.isMultiTouch();
 }
 
 pub fn isGamepad(self: Device) bool {
     return self.hasEventCode(
-        .{ .KEY = Event.Code.KEYCODE.BTN_GAMEPAD },
+        .{ .key = Event.Code.KEY.BTN_GAMEPAD },
     );
 }
 
 pub fn isMouse(self: Device) bool {
     inline for ([_]Event.Code{
-        .{ .KEY = Event.Code.KEYCODE.BTN_MOUSE },
-        .{ .REL = .REL_X },
-        .{ .REL = .REL_Y },
+        .{ .key = Event.Code.KEY.BTN_MOUSE },
+        .{ .rel = .REL_X },
+        .{ .rel = .REL_Y },
     }) |code| if (!self.hasEventCode(code)) return false;
     return true;
 }
 
 pub fn isKeyboard(self: Device) bool {
     inline for ([_]Event.Code{
-        .{ .KEY = .KEY_SPACE },
-        .{ .KEY = .KEY_A },
-        .{ .KEY = .KEY_Z },
+        .{ .key = .KEY_SPACE },
+        .{ .key = .KEY_A },
+        .{ .key = .KEY_Z },
     }) |code| if (!self.hasEventCode(code)) return false;
     return true;
 }
@@ -87,7 +87,7 @@ pub fn readEvents(self: Device, dest: *ArrayList(Event)) !usize {
         ev = (try self.nextEvent(ReadFlags.NORMAL)).?;
         try dest.append(ev);
         const syn = switch (ev.code) {
-            .SYN => |e| e,
+            .syn => |e| e,
             else => continue,
         };
         if (syn == .SYN_REPORT) break;
@@ -113,7 +113,7 @@ fn removeInvalidEvents(events: *ArrayList(Event), start_index: usize) void {
     var idx = start_index;
     while (idx < events.items.len) : (idx += 1) {
         const syn = switch (events.items[idx].code) {
-            .SYN => |e| e,
+            .syn => |e| e,
             else => continue,
         };
         switch (syn) {
@@ -137,28 +137,28 @@ test removeInvalidEvents {
     const allocator = std.testing.allocator;
     // zig fmt: off
     const before: []const Event = &.{
-        .{ .code = .{ .ABS = .ABS_X },       .value = 9 },
-        .{ .code = .{ .ABS = .ABS_Y },       .value = 8 },
-        .{ .code = .{ .SYN = .SYN_REPORT },  .value = 0 },
+        .{ .code = .{ .abs = .ABS_X },       .value = 9 },
+        .{ .code = .{ .abs = .ABS_Y },       .value = 8 },
+        .{ .code = .{ .syn = .SYN_REPORT },  .value = 0 },
         // ---
-        .{ .code = .{ .ABS = .ABS_X },       .value = 10 },
-        .{ .code = .{ .ABS = .ABS_Y },       .value = 10 },
-        .{ .code = .{ .SYN = .SYN_DROPPED }, .value = 0 },
-        .{ .code = .{ .ABS = .ABS_Y },       .value = 15 },
-        .{ .code = .{ .SYN = .SYN_REPORT },  .value = 0 },
+        .{ .code = .{ .abs = .ABS_X },       .value = 10 },
+        .{ .code = .{ .abs = .ABS_Y },       .value = 10 },
+        .{ .code = .{ .syn = .SYN_DROPPED }, .value = 0 },
+        .{ .code = .{ .abs = .ABS_Y },       .value = 15 },
+        .{ .code = .{ .syn = .SYN_REPORT },  .value = 0 },
         // ---
-        .{ .code = .{ .ABS = .ABS_X },       .value = 11 },
-        .{ .code = .{ .KEY = .BTN_TOUCH },   .value = 0 },
-        .{ .code = .{ .SYN = .SYN_REPORT },  .value = 0 },
+        .{ .code = .{ .abs = .ABS_X },       .value = 11 },
+        .{ .code = .{ .key = .BTN_TOUCH },   .value = 0 },
+        .{ .code = .{ .syn = .SYN_REPORT },  .value = 0 },
     };
     const after: []const Event = &.{
-        .{ .code = .{ .ABS = .ABS_X },       .value = 9 },
-        .{ .code = .{ .ABS = .ABS_Y },       .value = 8 },
-        .{ .code = .{ .SYN = .SYN_REPORT },  .value = 0 },
+        .{ .code = .{ .abs = .ABS_X },       .value = 9 },
+        .{ .code = .{ .abs = .ABS_Y },       .value = 8 },
+        .{ .code = .{ .syn = .SYN_REPORT },  .value = 0 },
         // ---
-        .{ .code = .{ .ABS = .ABS_X },       .value = 11 },
-        .{ .code = .{ .KEY = .BTN_TOUCH },   .value = 0 },
-        .{ .code = .{ .SYN = .SYN_REPORT },  .value = 0 },
+        .{ .code = .{ .abs = .ABS_X },       .value = 11 },
+        .{ .code = .{ .key = .BTN_TOUCH },   .value = 0 },
+        .{ .code = .{ .syn = .SYN_REPORT },  .value = 0 },
     };
     // zig fmt: on
     var events = ArrayList(Event).init(allocator);
@@ -202,7 +202,7 @@ pub fn hasEventCode(self: Device, code: Event.Code) bool {
     return self.raw.hasEventCode(code);
 }
 
-pub fn getAbsInfo(self: Device, axis: Event.Code.ABSCODE) [*c]const rawModule.AbsInfo {
+pub fn getAbsInfo(self: Device, axis: Event.Code.ABS) [*c]const rawModule.AbsInfo {
     return self.raw.getAbsInfo(axis);
 }
 
@@ -210,6 +210,6 @@ pub fn getNumSlots(self: Device) c_int {
     return self.raw.getNumSlots();
 }
 
-pub fn getRepeat(self: Device, repeat: Event.Code.REPCODE) ?c_int {
+pub fn getRepeat(self: Device, repeat: Event.Code.REP) ?c_int {
     return self.raw.getRepeat(repeat);
 }

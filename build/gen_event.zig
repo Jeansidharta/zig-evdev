@@ -2,6 +2,21 @@ const c = @cImport(@cInclude("libevdev/libevdev.h"));
 
 const std = @import("std");
 
+/// Transforms a string into lowercase using a static backing buffer. No need to deallocate.
+/// Assumes string is not longer than MAX_LOWERCASE_LEN characters. Not thread-safe
+pub fn lowercase(arg: []const u8) []const u8 {
+    const MAX_LOWERCASE_LEN = 256;
+    const Static = struct {
+        var buf: [MAX_LOWERCASE_LEN]u8 = undefined;
+    };
+    if (arg.len > MAX_LOWERCASE_LEN)
+        @panic("Failed to lowercase string. Reason: string too long");
+
+    var fb = std.heap.FixedBufferAllocator.init(&Static.buf);
+    return std.ascii.allocLowerString(fb.allocator(), arg) catch
+        @panic("Failed to lowercase string for unknown reason");
+}
+
 pub fn main() !void {
     @setEvalBranchQuota(220000);
     const allocator = std.heap.page_allocator;
@@ -39,7 +54,11 @@ pub fn main() !void {
             \\pub const Type = enum(c_ushort) {
             \\
         ) catch {};
-        defer _ = w.write(
+        inline for (types) |typ| w.print(
+            \\    {s} = {},
+            \\
+        , .{ lowercase(typ), @field(c, "EV_" ++ typ) }) catch {};
+        _ = w.write(
             \\    pub inline fn new(integer: c_ushort) Type {
             \\        return @enumFromInt(integer);
             \\    }
@@ -51,16 +70,18 @@ pub fn main() !void {
             \\    }
             \\    pub fn getName(self: @This()) []const u8 {
             \\        return switch (self) {
-            \\            inline else => |t| "EV_" ++ @tagName(t),
+            \\
+        ) catch {};
+        inline for (types) |typ| w.print(
+            \\          .{s} => "EV_{s}",
+            \\
+        , .{ lowercase(typ), typ }) catch {};
+        _ = w.write(
             \\        };
             \\    }
             \\};
             \\
         ) catch {};
-        inline for (types) |typ| w.print(
-            \\    {s} = {},
-            \\
-        , .{ typ, @field(c, "EV_" ++ typ) }) catch {};
     }
 
     {
@@ -93,13 +114,13 @@ pub fn main() !void {
         ) catch {};
 
         for (types) |typ| w.print(
-            \\    {0s}: {0s}CODE,
+            \\    {s}: {s},
             \\
-        , .{typ}) catch {};
+        , .{ lowercase(typ), typ }) catch {};
 
         inline for (types) |typ| {
             w.print(
-                \\    pub const {s}CODE = enum(c_ushort) {{
+                \\    pub const {s} = enum(c_ushort) {{
                 \\
             , .{typ}) catch {};
             defer w.print(
@@ -120,7 +141,7 @@ pub fn main() !void {
                 \\        }}
                 \\    }};
                 \\
-            , .{typ}) catch {};
+            , .{lowercase(typ)}) catch {};
 
             const Alias = struct {
                 name: []const u8,
