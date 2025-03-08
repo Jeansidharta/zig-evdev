@@ -1,5 +1,6 @@
 .{
-    .name = "zig-evdev",
+    .name = .evdev,
+    .fingerprint = 0x3796d87768aac4d6,
     .version = "0.1.0",
 
     .paths = .{
